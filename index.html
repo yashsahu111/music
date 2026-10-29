@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Spotify Personal</title>
+  <title>Spotify Personal - Full Music</title>
 
   <link rel="manifest" href="manifest.json">
   <meta name="mobile-web-app-capable" content="yes">
@@ -35,36 +35,47 @@
 </head>
 <body class="h-screen flex flex-col justify-between overflow-hidden">
 
+  <!-- Offline Status Banner -->
+  <div id="offline-banner" class="hidden bg-amber-600 text-black text-xs font-bold py-1 text-center">
+    Offline Mode — Playing Saved Downloads
+  </div>
+
   <!-- Main View -->
   <div class="flex-1 overflow-y-auto no-scrollbar pb-36 p-4">
     
     <div class="flex justify-between items-center mb-4 pt-2">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">Spotify Music</h1>
-        <p class="text-xs text-zinc-400">Search & Stream Music</p>
+        <p class="text-xs text-zinc-400">Full Songs & Complete Catalogs</p>
       </div>
     </div>
 
-    <!-- Search Input -->
+    <!-- Search Bar -->
     <div class="flex gap-2 mb-4">
       <div class="relative flex-1">
         <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
-        <input type="text" id="search-input" placeholder="Search any artist or song..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchSongs()">
+        <input type="text" id="search-input" placeholder="Search artist or song (e.g., Jordan Sandhu)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchFullSongs()">
       </div>
-      <button onclick="searchSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
+      <button onclick="searchFullSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
         Search
       </button>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="flex gap-2 mb-4 border-b border-zinc-800 pb-2">
+      <button onclick="switchTab('online')" id="tab-online" class="text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black">Online Search</button>
+      <button onclick="switchTab('offline')" id="tab-offline" class="text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">Downloaded (Offline)</button>
     </div>
 
     <!-- Loading Spinner -->
     <div id="loading-spinner" class="hidden text-center py-10">
       <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
-      <p class="text-xs text-zinc-400 mt-2">Searching songs...</p>
+      <p class="text-xs text-zinc-400 mt-2">Fetching full audio tracks...</p>
     </div>
 
-    <!-- Track List -->
+    <!-- Song List -->
     <div class="space-y-2" id="song-list">
-      <p class="text-center text-zinc-500 py-10 text-xs">Type an artist or song name above to start listening.</p>
+      <p class="text-center text-zinc-500 py-10 text-xs">Search any artist or song name above to start listening.</p>
     </div>
   </div>
 
@@ -94,7 +105,7 @@
       <button onclick="closeFullPlayer()" class="text-zinc-400 p-2">
         <i data-lucide="chevron-down" class="w-7 h-7"></i>
       </button>
-      <span class="text-xs uppercase tracking-widest text-zinc-400 font-bold">Now Playing</span>
+      <span class="text-xs uppercase tracking-widest text-zinc-400 font-bold">Now Playing Full Song</span>
       <div class="w-7"></div>
     </div>
 
@@ -133,7 +144,24 @@
   <audio id="audio-element" preload="auto"></audio>
 
   <script>
-    let songs = [];
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+
+    // Offline IndexedDB Storage
+    let db;
+    const dbReq = indexedDB.open('SpotifyFullDB', 1);
+    dbReq.onupgradeneeded = (e) => {
+      db = e.target.result;
+      if (!db.objectStoreNames.contains('downloads')) {
+        db.createObjectStore('downloads', { keyPath: 'id' });
+      }
+    };
+    dbReq.onsuccess = (e) => { db = e.target.result; loadOfflineSongs(); };
+
+    let searchResults = [];
+    let offlineSongs = [];
+    let currentTab = 'online';
     let currentIndex = -1;
     let isPlaying = false;
 
@@ -144,9 +172,29 @@
 
     window.onload = () => {
       lucide.createIcons();
+      window.addEventListener('online', checkNetwork);
+      window.addEventListener('offline', checkNetwork);
     };
 
-    async function searchSongs() {
+    function checkNetwork() {
+      const banner = document.getElementById('offline-banner');
+      if (!navigator.onLine) {
+        banner.classList.remove('hidden');
+        switchTab('offline');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.getElementById('tab-online').className = tab === 'online' ? "text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black" : "text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300";
+      document.getElementById('tab-offline').className = tab === 'offline' ? "text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black" : "text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300";
+      renderSongs();
+    }
+
+    // CORS Proxy Engine for Full Length Saavn Songs
+    async function searchFullSongs() {
       const query = searchInput.value.trim();
       if (!query) return;
 
@@ -154,35 +202,77 @@
       songListEl.innerHTML = '';
 
       try {
-        const response = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=50`);
+        const response = await fetch(`https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&limit=40`);
         const data = await response.json();
 
-        if (data.results && data.results.length > 0) {
-          songs = data.results.map(item => ({
-            id: item.trackId,
-            title: item.trackName,
-            artist: item.artistName,
-            cover: item.artworkUrl100.replace('100x100bb', '500x500bb'),
-            url: item.previewUrl
+        if (data.success && data.data.results.length > 0) {
+          searchResults = data.data.results.map(item => {
+            const bestAudio = item.downloadUrl.find(u => u.quality === '320kbps') || item.downloadUrl[item.downloadUrl.length - 1];
+            const bestCover = item.image.find(i => i.quality === '500x500') || item.image[item.image.length - 1];
+
+            return {
+              id: item.id,
+              title: cleanText(item.name),
+              artist: cleanText(item.primaryArtists || item.artists?.primary[0]?.name || 'Artist'),
+              cover: bestCover ? bestCover.link : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
+              url: bestAudio.link
+            };
+          });
+
+          document.getElementById('loading-spinner').classList.add('hidden');
+          switchTab('online');
+        } else {
+          throw new Error('No songs found');
+        }
+      } catch (err) {
+        // Backup proxy endpoint
+        fetchBackupSaavn(query);
+      }
+    }
+
+    async function fetchBackupSaavn(query) {
+      try {
+        const res = await fetch(`https://jiosaavn-api-private-us.vercel.app/search/songs?query=${encodeURIComponent(query)}&limit=40`);
+        const data = await res.json();
+
+        if (data.data && data.data.results) {
+          searchResults = data.data.results.map(item => ({
+            id: item.id,
+            title: cleanText(item.name),
+            artist: cleanText(item.primaryArtists),
+            cover: item.image[item.image.length - 1].link,
+            url: item.downloadUrl[item.downloadUrl.length - 1].link
           }));
 
           document.getElementById('loading-spinner').classList.add('hidden');
-          renderSongs();
+          switchTab('online');
         } else {
-          document.getElementById('loading-spinner').classList.add('hidden');
-          songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No songs found for "${query}".</p>`;
+          throw new Error('No results');
         }
-      } catch (err) {
+      } catch (e) {
         document.getElementById('loading-spinner').classList.add('hidden');
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Search error. Please try again.</p>`;
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No songs found for "${query}". Try another search term.</p>`;
       }
+    }
+
+    function cleanText(str) {
+      if (!str) return '';
+      return str.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'");
     }
 
     function renderSongs() {
       songListEl.innerHTML = '';
+      const list = currentTab === 'online' ? searchResults : offlineSongs;
 
-      songs.forEach((song, idx) => {
+      if (list.length === 0) {
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">${currentTab === 'online' ? 'Type an artist or song name above to start listening.' : 'No downloaded songs. Tap the download icon next to any song to play offline!'}</p>`;
+        return;
+      }
+
+      list.forEach((song, idx) => {
+        const isDownloaded = offlineSongs.some(s => s.id === song.id);
         const isCurrent = currentIndex === idx;
+
         const card = document.createElement('div');
         card.className = `flex items-center justify-between p-3 rounded-lg cursor-pointer bg-spotify-card transition ${isCurrent ? 'border-l-4 border-green-500' : ''}`;
         card.onclick = () => playSong(idx);
@@ -195,7 +285,20 @@
               <p class="text-xs text-zinc-400 truncate">${song.artist}</p>
             </div>
           </div>
-          <i data-lucide="play-circle" class="w-6 h-6 text-zinc-400"></i>
+          <div class="flex items-center gap-2">
+            ${isDownloaded ? `
+              <span class="text-green-500 text-xs font-bold p-2"><i data-lucide="check-circle" class="w-4 h-4"></i></span>
+            ` : `
+              <button onclick="event.stopPropagation(); downloadSong('${song.id}')" class="text-zinc-400 hover:text-white p-2">
+                <i data-lucide="download" class="w-4 h-4"></i>
+              </button>
+            `}
+            ${currentTab === 'offline' ? `
+              <button onclick="event.stopPropagation(); deleteOfflineSong('${song.id}')" class="text-zinc-500 hover:text-red-400 p-2">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            ` : ''}
+          </div>
         `;
         songListEl.appendChild(card);
       });
@@ -203,11 +306,12 @@
     }
 
     function playSong(index) {
-      if (index < 0 || index >= songs.length) return;
+      const list = currentTab === 'online' ? searchResults : offlineSongs;
+      if (index < 0 || index >= list.length) return;
       currentIndex = index;
-      const song = songs[currentIndex];
+      const song = list[currentIndex];
 
-      audio.src = song.url;
+      audio.src = song.offlineBlobUrl || song.url;
       audio.play().then(() => {
         isPlaying = true;
         updateUI();
@@ -215,8 +319,47 @@
       }).catch(err => console.log('Playback error:', err));
     }
 
+    async function downloadSong(songId) {
+      const song = searchResults.find(s => s.id === songId);
+      if (!song) return;
+
+      try {
+        const response = await fetch(song.url);
+        const blob = await response.blob();
+
+        const record = { ...song, audioBlob: blob };
+        const tx = db.transaction('downloads', 'readwrite');
+        tx.objectStore('downloads').put(record);
+        tx.oncomplete = () => loadOfflineSongs();
+      } catch (err) {
+        alert('Could not download song for offline listening.');
+      }
+    }
+
+    function loadOfflineSongs() {
+      if (!db) return;
+      const tx = db.transaction('downloads', 'readonly');
+      const store = tx.objectStore('downloads');
+      const req = store.getAll();
+
+      req.onsuccess = () => {
+        offlineSongs = req.result.map(song => ({
+          ...song,
+          offlineBlobUrl: URL.createObjectURL(song.audioBlob)
+        }));
+        renderSongs();
+      };
+    }
+
+    function deleteOfflineSong(songId) {
+      const tx = db.transaction('downloads', 'readwrite');
+      tx.objectStore('downloads').delete(songId);
+      tx.oncomplete = () => loadOfflineSongs();
+    }
+
     function togglePlayPause() {
-      if (currentIndex === -1 && songs.length > 0) {
+      const list = currentTab === 'online' ? searchResults : offlineSongs;
+      if (currentIndex === -1 && list.length > 0) {
         playSong(0);
         return;
       }
@@ -231,8 +374,9 @@
     }
 
     function updateUI() {
-      if (currentIndex === -1) return;
-      const song = songs[currentIndex];
+      const list = currentTab === 'online' ? searchResults : offlineSongs;
+      if (currentIndex === -1 || !list[currentIndex]) return;
+      const song = list[currentIndex];
 
       document.getElementById('player-cover').src = song.cover;
       document.getElementById('player-title').innerText = song.title;
@@ -251,13 +395,15 @@
     }
 
     function playNext() {
-      if (songs.length === 0) return;
-      playSong((currentIndex + 1) % songs.length);
+      const list = currentTab === 'online' ? searchResults : offlineSongs;
+      if (list.length === 0) return;
+      playSong((currentIndex + 1) % list.length);
     }
 
     function playPrev() {
-      if (songs.length === 0) return;
-      playSong((currentIndex - 1 + songs.length) % songs.length);
+      const list = currentTab === 'online' ? searchResults : offlineSongs;
+      if (list.length === 0) return;
+      playSong((currentIndex - 1 + list.length) % list.length);
     }
 
     audio.ontimeupdate = () => {
