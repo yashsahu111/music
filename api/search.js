@@ -2,47 +2,39 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { q } = req.query;
-  if (!q) return res.status(400).json({ error: 'Query parameter "q" is required' });
+  const { id } = req.query;
+  if (!id) return res.status(400).json({ error: 'Song ID is required' });
 
   try {
-    const response = await fetch(
-      `https://www.jiosaavn.com/api.php?__call=search.getResults&q=${encodeURIComponent(q)}&_format=json&_marker=0&api_version=4&n=40`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-      }
+    // Fetch full song details by ID
+    const detailsRes = await fetch(
+      `https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=${encodeURIComponent(id)}&_format=json&_marker=0&api_version=4`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } }
     );
+    const detailsData = await detailsRes.json();
+    const songData = detailsData[id];
 
-    const data = await response.json();
-
-    if (!data.results || data.results.length === 0) {
-      return res.status(200).json([]);
+    if (!songData || !songData.encrypted_media_url) {
+      return res.status(404).json({ error: 'Stream not found' });
     }
 
-    const songs = data.results.map((item) => {
-      let cover = item.image ? item.image.replace('150x150', '500x500') : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60';
-      let preview = item.media_preview_url || '';
-      let streamUrl = preview
-        .replace('preview.saavncdn.com', 'aac.saavncdn.com')
-        .replace('_96_p.mp4', '_320.mp4');
+    // Generate signed auth token for 320kbps stream
+    const tokenRes = await fetch(
+      `https://www.jiosaavn.com/api.php?__call=song.generateAuthToken&url=${encodeURIComponent(
+        songData.encrypted_media_url
+      )}&bitrate=320&_format=json&_marker=0&api_version=4`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } }
+    );
+    const tokenData = await tokenRes.json();
 
-      return {
-        id: String(item.id),
-        title: item.title ? item.title.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'") : 'Unknown Track',
-        artist: item.more_info?.singers || item.subtitle || 'Artist',
-        cover: cover,
-        url: streamUrl
-      };
-    });
+    if (tokenData && tokenData.auth_url) {
+      return res.status(200).json({ streamUrl: tokenData.auth_url });
+    }
 
-    return res.status(200).json(songs);
+    return res.status(500).json({ error: 'Could not generate playback token' });
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to fetch tracks' });
+    return res.status(500).json({ error: 'Playback server error' });
   }
 }
