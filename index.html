@@ -41,7 +41,7 @@
     <div class="flex justify-between items-center mb-4 pt-2">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">Spotify Music</h1>
-        <p class="text-xs text-zinc-400">Full Songs & Discographies</p>
+        <p class="text-xs text-zinc-400">Full Songs & Complete Catalogs</p>
       </div>
     </div>
 
@@ -49,7 +49,7 @@
     <div class="flex gap-2 mb-4">
       <div class="relative flex-1">
         <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
-        <input type="text" id="search-input" placeholder="Search artist or full song (e.g., Shubh)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchFullSongs()">
+        <input type="text" id="search-input" placeholder="Search artist or song (e.g., Shubh)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchFullSongs()">
       </div>
       <button onclick="searchFullSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
         Search
@@ -59,7 +59,7 @@
     <!-- Loading Spinner -->
     <div id="loading-spinner" class="hidden text-center py-10">
       <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
-      <p class="text-xs text-zinc-400 mt-2">Loading full songs...</p>
+      <p class="text-xs text-zinc-400 mt-2">Fetching full songs catalog...</p>
     </div>
 
     <!-- Track List -->
@@ -146,44 +146,84 @@
       searchFullSongs();
     };
 
-    // Public JioSaavn Engine Endpoint
-    async function searchFullSongs() {
+    // JSONP Engine (Bypasses CORS restrictions completely)
+    function searchFullSongs() {
       const query = searchInput.value.trim();
       if (!query) return;
 
       document.getElementById('loading-spinner').classList.remove('hidden');
       songListEl.innerHTML = '';
 
+      // Remove existing JSONP script tag if any
+      const existingScript = document.getElementById('jsonp-script');
+      if (existingScript) existingScript.remove();
+
+      // Create JSONP script injection
+      const script = document.createElement('script');
+      script.id = 'jsonp-script';
+      script.src = `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query)}&_format=json&_marker=0&ctx=web64s&api_version=4&callback=handleSaavnResponse`;
+      
+      script.onerror = () => {
+        document.getElementById('loading-spinner').classList.add('hidden');
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Search error. Please try again.</p>`;
+      };
+
+      document.body.appendChild(script);
+    }
+
+    // Callback Function for JSONP
+    window.handleSaavnResponse = function(data) {
+      document.getElementById('loading-spinner').classList.add('hidden');
+
+      if (data && data.songs && data.songs.data && data.songs.data.length > 0) {
+        songs = data.songs.data.map(item => {
+          let coverUrl = item.image ? item.image.replace('150x150', '500x500') : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60';
+          
+          // Construct decrypt/direct audio URL
+          let audioUrl = item.media_url || item.url;
+          if (item.encrypted_media_url) {
+            audioUrl = `https://saavn.dev/api/songs?ids=${item.id}`;
+          }
+
+          return {
+            id: item.id,
+            title: cleanText(item.title),
+            artist: cleanText(item.subtitle || item.singers || 'Artist'),
+            cover: coverUrl,
+            url: item.encrypted_media_url,
+            rawUrl: item.url
+          };
+        });
+
+        // Resolve stream URLs
+        fetchAudioStreams();
+      } else {
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No songs found for that search query.</p>`;
+      }
+    };
+
+    async function fetchAudioStreams() {
       try {
-        const response = await fetch(`https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&limit=40`);
+        const ids = songs.map(s => s.id).join(',');
+        const response = await fetch(`https://saavn.dev/api/songs?ids=${ids}`);
         const data = await response.json();
 
-        if (data.success && data.data.results.length > 0) {
-          songs = data.data.results.map(item => {
-            // Get highest quality audio URL
-            const audioUrlObj = item.downloadUrl.find(u => u.quality === '320kbps') || item.downloadUrl[item.downloadUrl.length - 1];
-            // Get highest quality image URL
-            const coverObj = item.image.find(i => i.quality === '500x500') || item.image[item.image.length - 1];
-
-            return {
-              id: item.id,
-              title: cleanText(item.name),
-              artist: cleanText(item.primaryArtists || item.artists?.primary[0]?.name || 'Artist'),
-              cover: coverObj ? coverObj.link : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
-              url: audioUrlObj.link
-            };
+        if (data.success && data.data) {
+          data.data.forEach(item => {
+            const foundSong = songs.find(s => s.id === item.id);
+            if (foundSong && item.downloadUrl) {
+              const bestAudio = item.downloadUrl.find(u => u.quality === '320kbps') || item.downloadUrl[item.downloadUrl.length - 1];
+              foundSong.url = bestAudio.link;
+              if (item.image && item.image.length > 0) {
+                foundSong.cover = item.image[item.image.length - 1].link;
+              }
+            }
           });
-
-          document.getElementById('loading-spinner').classList.add('hidden');
-          renderSongs();
-        } else {
-          throw new Error('No songs found');
         }
-      } catch (err) {
-        console.error(err);
-        document.getElementById('loading-spinner').classList.add('hidden');
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Error loading songs. Please try searching again.</p>`;
+      } catch (e) {
+        console.log("Stream details fetched directly on play.");
       }
+      renderSongs();
     }
 
     function cleanText(str) {
@@ -215,10 +255,22 @@
       lucide.createIcons();
     }
 
-    function playSong(index) {
+    async function playSong(index) {
       if (index < 0 || index >= songs.length) return;
       currentIndex = index;
       const song = songs[currentIndex];
+
+      // If URL needs resolution on the fly
+      if (!song.url || !song.url.startsWith('http')) {
+        try {
+          const res = await fetch(`https://saavn.dev/api/songs?ids=${song.id}`);
+          const d = await res.json();
+          if (d.data && d.data[0] && d.data[0].downloadUrl) {
+            const best = d.data[0].downloadUrl.find(u => u.quality === '320kbps') || d.data[0].downloadUrl[d.data[0].downloadUrl.length - 1];
+            song.url = best.link;
+          }
+        } catch (e) {}
+      }
 
       audio.src = song.url;
       audio.play().then(() => {
