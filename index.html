@@ -3,33 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>My Personal Spotify</title>
+  <title>Spotify Personal</title>
 
-  <!-- PWA Manifest Link -->
+  <!-- PWA & Mobile Display Configuration -->
   <link rel="manifest" href="manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#121212">
 
-  <!-- Tailwind CSS -->
+  <!-- Tailwind CSS & Icons -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- jsmediatags for parsing local audio ID3 tags & covers -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
 
   <style>
     body {
       background-color: #121212;
       color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       user-select: none;
       -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
     .spotify-green { color: #1DB954; }
     .bg-spotify-green { background-color: #1DB954; }
     .bg-spotify-card { background-color: #181818; }
-    .bg-spotify-card:hover { background-color: #282828; }
-    .bg-spotify-player { background-color: #181818; }
+    .bg-spotify-card:active { background-color: #282828; }
     
-    /* Hide scrollbars */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
@@ -40,37 +41,50 @@
 </head>
 <body class="h-screen flex flex-col justify-between overflow-hidden">
 
-  <!-- Main Content Container -->
-  <div class="flex-1 overflow-y-auto no-scrollbar pb-32 p-4" id="main-content">
+  <!-- Network Status Indicator -->
+  <div id="offline-banner" class="hidden bg-amber-600 text-black text-xs font-bold py-1 text-center">
+    Offline Mode — Playing Local Songs
+  </div>
+
+  <!-- Main Scrollable Screen -->
+  <div class="flex-1 overflow-y-auto no-scrollbar pb-36 p-4" id="main-content">
     
     <!-- Top Header -->
-    <div class="flex justify-between items-center mb-6 pt-2">
-      <h1 class="text-2xl font-bold tracking-tight">My Library</h1>
-      <label for="file-upload" class="bg-spotify-green hover:bg-green-600 text-black font-semibold px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer text-sm transition">
-        <i data-lucide="plus" class="w-4 h-4"></i> Add Songs
+    <div class="flex justify-between items-center mb-5 pt-2">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">Your Music</h1>
+        <p class="text-xs text-zinc-400">Offline & Online Player</p>
+      </div>
+      <label for="file-upload" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer text-xs transition shadow-md">
+        <i data-lucide="folder-plus" class="w-4 h-4"></i> Add Local MP3s
       </label>
       <input id="file-upload" type="file" accept="audio/*" multiple class="hidden">
     </div>
 
-    <!-- Search Bar -->
-    <div class="relative mb-6">
-      <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
-      <input type="text" id="search-input" placeholder="Search songs or artists..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500">
+    <!-- Search Input -->
+    <div class="relative mb-5">
+      <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
+      <input type="text" id="search-input" placeholder="Search library..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500">
     </div>
 
-    <!-- Playlist Section / Song List -->
-    <div class="space-y-2" id="song-list">
-      <!-- Songs will be injected here dynamically -->
+    <!-- Section Tabs -->
+    <div class="flex gap-2 mb-4 border-b border-zinc-800 pb-2">
+      <button onclick="switchTab('all')" id="tab-all" class="text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black">All Songs</button>
+      <button onclick="switchTab('online')" id="tab-online" class="text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">Online Stream</button>
+      <button onclick="switchTab('local')" id="tab-local" class="text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">Local Uploads</button>
     </div>
+
+    <!-- Track List -->
+    <div class="space-y-2" id="song-list"></div>
   </div>
 
-  <!-- Mini Player (Sticky Bottom) -->
-  <div id="mini-player" class="fixed bottom-0 left-0 right-0 bg-spotify-player border-t border-zinc-800 p-3 flex items-center justify-between z-40">
+  <!-- Sticky Mini Player -->
+  <div id="mini-player" class="fixed bottom-0 left-0 right-0 bg-[#181818] border-t border-zinc-800 p-3 flex items-center justify-between z-40 shadow-2xl">
     <div class="flex items-center gap-3 overflow-hidden cursor-pointer flex-1" onclick="openFullPlayer()">
-      <img id="player-cover" src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100&auto=format&fit=crop&q=60" class="w-12 h-12 rounded object-cover flex-shrink-0" alt="Cover">
+      <img id="player-cover" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=120&auto=format&fit=crop&q=60" class="w-12 h-12 rounded-md object-cover flex-shrink-0" alt="Cover">
       <div class="overflow-hidden pr-2">
-        <p id="player-title" class="text-sm font-semibold truncate text-white">No track selected</p>
-        <p id="player-artist" class="text-xs text-zinc-400 truncate">Tap to play music</p>
+        <p id="player-title" class="text-sm font-semibold truncate text-white">Select a track</p>
+        <p id="player-artist" class="text-xs text-zinc-400 truncate">Tap to open player</p>
       </div>
     </div>
 
@@ -78,7 +92,7 @@
       <button onclick="togglePlayPause()" class="w-10 h-10 rounded-full bg-spotify-green text-black flex items-center justify-center focus:outline-none">
         <i id="play-icon" data-lucide="play" class="w-5 h-5 fill-current"></i>
       </button>
-      <button onclick="playNext()" class="text-zinc-400 hover:text-white p-1">
+      <button onclick="playNext()" class="text-zinc-400 p-1">
         <i data-lucide="skip-forward" class="w-5 h-5"></i>
       </button>
     </div>
@@ -86,36 +100,26 @@
 
   <!-- Full Screen Player Modal -->
   <div id="full-player" class="fixed inset-0 bg-gradient-to-b from-zinc-900 via-zinc-950 to-black z-50 transform translate-y-full transition-transform duration-300 ease-in-out flex flex-col justify-between p-6">
-    
-    <!-- Top Header -->
     <div class="flex justify-between items-center">
-      <button onclick="closeFullPlayer()" class="text-zinc-400 hover:text-white">
+      <button onclick="closeFullPlayer()" class="text-zinc-400 p-2">
         <i data-lucide="chevron-down" class="w-7 h-7"></i>
       </button>
-      <span class="text-xs uppercase tracking-widest text-zinc-400 font-semibold">Playing from Your Library</span>
-      <button class="text-zinc-400 hover:text-white">
-        <i data-lucide="more-horizontal" class="w-6 h-6"></i>
-      </button>
+      <span class="text-xs uppercase tracking-widest text-zinc-400 font-bold">Now Playing</span>
+      <div class="w-7"></div>
     </div>
 
-    <!-- Album Art -->
     <div class="my-auto py-6 flex justify-center">
-      <img id="full-cover" src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=60" class="w-72 h-72 rounded-lg object-cover shadow-2xl" alt="Full Cover">
+      <img id="full-cover" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60" class="w-72 h-72 rounded-xl object-cover shadow-2xl border border-zinc-800" alt="Cover">
     </div>
 
-    <!-- Track Info & Controls -->
     <div>
       <div class="flex justify-between items-center mb-6">
-        <div>
-          <h2 id="full-title" class="text-xl font-bold text-white truncate">No track selected</h2>
+        <div class="overflow-hidden pr-4">
+          <h2 id="full-title" class="text-xl font-bold text-white truncate">Select a track</h2>
           <p id="full-artist" class="text-sm text-zinc-400 truncate">Tap to play music</p>
         </div>
-        <button id="like-btn" class="text-zinc-400 hover:text-green-500">
-          <i data-lucide="heart" class="w-6 h-6"></i>
-        </button>
       </div>
 
-      <!-- Seek Bar -->
       <div class="mb-6">
         <input type="range" id="seek-bar" value="0" max="100" class="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
         <div class="flex justify-between text-xs text-zinc-400 mt-2">
@@ -124,47 +128,56 @@
         </div>
       </div>
 
-      <!-- Player Controls -->
-      <div class="flex justify-between items-center mb-8 px-4">
-        <button class="text-zinc-400 hover:text-white">
-          <i data-lucide="shuffle" class="w-5 h-5"></i>
+      <div class="flex justify-between items-center mb-8 px-6">
+        <button onclick="playPrev()" class="text-white">
+          <i data-lucide="skip-back" class="w-8 h-8"></i>
         </button>
-        <button onclick="playPrev()" class="text-white hover:text-zinc-300">
-          <i data-lucide="skip-back" class="w-7 h-7"></i>
-        </button>
-        <button onclick="togglePlayPause()" class="w-16 h-16 rounded-full bg-spotify-green text-black flex items-center justify-center shadow-lg focus:outline-none">
+        <button onclick="togglePlayPause()" class="w-16 h-16 rounded-full bg-spotify-green text-black flex items-center justify-center shadow-lg">
           <i id="full-play-icon" data-lucide="play" class="w-8 h-8 fill-current"></i>
         </button>
-        <button onclick="playNext()" class="text-white hover:text-zinc-300">
-          <i data-lucide="skip-forward" class="w-7 h-7"></i>
-        </button>
-        <button class="text-zinc-400 hover:text-white">
-          <i data-lucide="repeat" class="w-5 h-5"></i>
+        <button onclick="playNext()" class="text-white">
+          <i data-lucide="skip-forward" class="w-8 h-8"></i>
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Audio Tag -->
-  <audio id="audio-element"></audio>
+  <audio id="audio-element" preload="auto"></audio>
 
   <script>
-    // Register Service Worker for PWA compliance
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js');
     }
 
-    // Initial Sample Song
+    // Default Online Music Tracks (Free Royalty Streams)
     let songs = [
       {
-        id: '1',
+        id: 'online-1',
         title: 'Acoustic Breeze',
         artist: 'Benjamin Tissot',
         cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60',
-        url: 'https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3'
+        url: 'https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3',
+        type: 'online'
+      },
+      {
+        id: 'online-2',
+        title: 'Creative Minds',
+        artist: 'Benjamin Tissot',
+        cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=60',
+        url: 'https://www.bensound.com/bensound-music/bensound-creativeminds.mp3',
+        type: 'online'
+      },
+      {
+        id: 'online-3',
+        title: 'Ukulele Joy',
+        artist: 'Benjamin Tissot',
+        cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=60',
+        url: 'https://www.bensound.com/bensound-music/bensound-ukulele.mp3',
+        type: 'online'
       }
     ];
 
+    let currentTab = 'all';
     let currentIndex = -1;
     let isPlaying = false;
 
@@ -175,33 +188,73 @@
 
     window.onload = () => {
       lucide.createIcons();
-      renderSongs(songs);
+      renderSongs();
+      checkNetworkStatus();
     };
 
-    function renderSongs(songArray) {
+    window.addEventListener('online', checkNetworkStatus);
+    window.addEventListener('offline', checkNetworkStatus);
+
+    function checkNetworkStatus() {
+      const banner = document.getElementById('offline-banner');
+      if (!navigator.onLine) {
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      ['all', 'online', 'local'].forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === tab) {
+          btn.className = "text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black";
+        } else {
+          btn.className = "text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300";
+        }
+      });
+      renderSongs();
+    }
+
+    function renderSongs() {
       songListEl.innerHTML = '';
-      if (songArray.length === 0) {
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-sm">No songs found. Click "+ Add Songs" to upload MP3 files!</p>`;
+      
+      let filtered = songs;
+      if (currentTab === 'online') filtered = songs.filter(s => s.type === 'online');
+      if (currentTab === 'local') filtered = songs.filter(s => s.type === 'local');
+
+      const query = searchInput.value.toLowerCase();
+      if (query) {
+        filtered = filtered.filter(s => s.title.toLowerCase().includes(query) || s.artist.toLowerCase().includes(query));
+      }
+
+      if (filtered.length === 0) {
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No tracks found. Upload local MP3 files to listen offline!</p>`;
         return;
       }
 
-      songArray.forEach((song, index) => {
+      filtered.forEach((song) => {
+        const index = songs.findIndex(s => s.id === song.id);
         const isCurrent = currentIndex === index;
+
         const card = document.createElement('div');
         card.className = `flex items-center justify-between p-3 rounded-lg cursor-pointer bg-spotify-card transition ${isCurrent ? 'border-l-4 border-green-500' : ''}`;
         card.onclick = () => playSong(index);
 
         card.innerHTML = `
           <div class="flex items-center gap-3 overflow-hidden">
-            <img src="${song.cover}" class="w-12 h-12 rounded object-cover flex-shrink-0" alt="Cover">
+            <img src="${song.cover}" class="w-12 h-12 rounded-md object-cover flex-shrink-0" alt="Cover">
             <div class="overflow-hidden">
               <p class="text-sm font-semibold truncate ${isCurrent ? 'text-green-500' : 'text-white'}">${song.title}</p>
-              <p class="text-xs text-zinc-400 truncate">${song.artist}</p>
+              <p class="text-xs text-zinc-400 truncate">${song.artist} • <span class="uppercase text-[10px] text-zinc-500">${song.type}</span></p>
             </div>
           </div>
-          <button onclick="event.stopPropagation(); removeSong('${song.id}')" class="text-zinc-500 hover:text-red-400 p-2">
-            <i data-lucide="trash-2" class="w-4 h-4"></i>
-          </button>
+          ${song.type === 'local' ? `
+            <button onclick="event.stopPropagation(); removeSong('${song.id}')" class="text-zinc-500 hover:text-red-400 p-2">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          ` : ''}
         `;
         songListEl.appendChild(card);
       });
@@ -214,11 +267,13 @@
       const song = songs[currentIndex];
 
       audio.src = song.url;
-      audio.play();
-      isPlaying = true;
-
-      updateUI();
-      setupMediaSession(song);
+      audio.play().then(() => {
+        isPlaying = true;
+        updateUI();
+        setupMediaSession(song);
+      }).catch(err => {
+        console.log("Audio play error:", err);
+      });
     }
 
     function togglePlayPause() {
@@ -252,7 +307,7 @@
       document.getElementById('play-icon').setAttribute('data-lucide', playIcon);
       document.getElementById('full-play-icon').setAttribute('data-lucide', playIcon);
 
-      renderSongs(songs);
+      renderSongs();
       lucide.createIcons();
     }
 
@@ -299,7 +354,7 @@
         jsmediatags.read(file, {
           onSuccess: function(tag) {
             const tags = tag.tags;
-            let coverUrl = 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=60';
+            let coverUrl = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60';
             
             if (tags.picture) {
               const { data, format } = tags.picture;
@@ -311,25 +366,27 @@
             }
 
             songs.push({
-              id: Date.now().toString() + Math.random(),
+              id: 'local-' + Date.now() + Math.random(),
               title: tags.title || file.name.replace(/\.[^/.]+$/, ""),
-              artist: tags.artist || "Unknown Artist",
+              artist: tags.artist || "Local Audio File",
               cover: coverUrl,
-              url: url
+              url: url,
+              type: 'local'
             });
 
-            renderSongs(songs);
+            renderSongs();
             if (currentIndex === -1) playSong(songs.length - 1);
           },
           onError: function() {
             songs.push({
-              id: Date.now().toString(),
+              id: 'local-' + Date.now(),
               title: file.name.replace(/\.[^/.]+$/, ""),
-              artist: "Local Track",
-              cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=60',
-              url: url
+              artist: "Local Audio File",
+              cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60',
+              url: url,
+              type: 'local'
             });
-            renderSongs(songs);
+            renderSongs();
             if (currentIndex === -1) playSong(songs.length - 1);
           }
         });
@@ -338,14 +395,10 @@
 
     function removeSong(id) {
       songs = songs.filter(s => s.id !== id);
-      renderSongs(songs);
+      renderSongs();
     }
 
-    searchInput.oninput = () => {
-      const query = searchInput.value.toLowerCase();
-      const filtered = songs.filter(s => s.title.toLowerCase().includes(query) || s.artist.toLowerCase().includes(query));
-      renderSongs(filtered);
-    };
+    searchInput.oninput = () => renderSongs();
 
     function openFullPlayer() {
       document.getElementById('full-player').classList.remove('translate-y-full');
