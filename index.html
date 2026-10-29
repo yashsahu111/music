@@ -15,7 +15,6 @@
   <!-- Tailwind CSS & Icons -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
 
   <style>
     body {
@@ -41,40 +40,46 @@
 </head>
 <body class="h-screen flex flex-col justify-between overflow-hidden">
 
-  <!-- Network Status Indicator -->
+  <!-- Network Status Banner -->
   <div id="offline-banner" class="hidden bg-amber-600 text-black text-xs font-bold py-1 text-center">
-    Offline Mode — Playing Local Songs
+    Offline Mode — Playing Downloaded Tracks
   </div>
 
   <!-- Main Scrollable Screen -->
   <div class="flex-1 overflow-y-auto no-scrollbar pb-36 p-4" id="main-content">
     
-    <!-- Top Header -->
-    <div class="flex justify-between items-center mb-5 pt-2">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-4 pt-2">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight">Your Music</h1>
-        <p class="text-xs text-zinc-400">Offline & Online Player</p>
+        <h1 class="text-2xl font-bold tracking-tight">Spotify Music</h1>
+        <p class="text-xs text-zinc-400">Search millions of songs & listen offline</p>
       </div>
-      <label for="file-upload" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer text-xs transition shadow-md">
-        <i data-lucide="folder-plus" class="w-4 h-4"></i> Add Local MP3s
-      </label>
-      <input id="file-upload" type="file" accept="audio/*" multiple class="hidden">
     </div>
 
-    <!-- Search Input -->
-    <div class="relative mb-5">
-      <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
-      <input type="text" id="search-input" placeholder="Search library..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500">
+    <!-- Search Bar -->
+    <div class="flex gap-2 mb-4">
+      <div class="relative flex-1">
+        <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
+        <input type="text" id="search-input" placeholder="Search any artist, song (e.g. Shubh)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="handleSearchKey(event)">
+      </div>
+      <button onclick="searchGlobalSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
+        Search
+      </button>
     </div>
 
-    <!-- Section Tabs -->
+    <!-- Navigation Tabs -->
     <div class="flex gap-2 mb-4 border-b border-zinc-800 pb-2">
-      <button onclick="switchTab('all')" id="tab-all" class="text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black">All Songs</button>
-      <button onclick="switchTab('online')" id="tab-online" class="text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">Online Stream</button>
-      <button onclick="switchTab('local')" id="tab-local" class="text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">Local Uploads</button>
+      <button onclick="switchTab('search')" id="tab-search" class="text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black">Search Results</button>
+      <button onclick="switchTab('offline')" id="tab-offline" class="text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">Downloaded (Offline)</button>
     </div>
 
-    <!-- Track List -->
+    <!-- Loading Spinner -->
+    <div id="loading-spinner" class="hidden text-center py-10">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
+      <p class="text-xs text-zinc-400 mt-2">Searching songs...</p>
+    </div>
+
+    <!-- Song List Container -->
     <div class="space-y-2" id="song-list"></div>
   </div>
 
@@ -149,35 +154,21 @@
       navigator.serviceWorker.register('sw.js');
     }
 
-    // Default Online Music Tracks (Free Royalty Streams)
-    let songs = [
-      {
-        id: 'online-1',
-        title: 'Acoustic Breeze',
-        artist: 'Benjamin Tissot',
-        cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60',
-        url: 'https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3',
-        type: 'online'
-      },
-      {
-        id: 'online-2',
-        title: 'Creative Minds',
-        artist: 'Benjamin Tissot',
-        cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=60',
-        url: 'https://www.bensound.com/bensound-music/bensound-creativeminds.mp3',
-        type: 'online'
-      },
-      {
-        id: 'online-3',
-        title: 'Ukulele Joy',
-        artist: 'Benjamin Tissot',
-        cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=60',
-        url: 'https://www.bensound.com/bensound-music/bensound-ukulele.mp3',
-        type: 'online'
+    // Database for storing offline audio files
+    let db;
+    const request = indexedDB.open('SpotifyOfflineDB', 1);
+    request.onupgradeneeded = (e) => {
+      db = e.target.result;
+      if (!db.objectStoreNames.contains('offline_songs')) {
+        db.createObjectStore('offline_songs', { keyPath: 'id' });
       }
-    ];
+    };
+    request.onsuccess = (e) => { db = e.target.result; loadOfflineSongs(); };
 
-    let currentTab = 'all';
+    let searchResults = [];
+    let offlineSongs = [];
+    let activePlaylist = [];
+    let currentTab = 'search';
     let currentIndex = -1;
     let isPlaying = false;
 
@@ -188,8 +179,10 @@
 
     window.onload = () => {
       lucide.createIcons();
-      renderSongs();
       checkNetworkStatus();
+      // Default Search for Shubh on app open
+      searchInput.value = 'Shubh';
+      searchGlobalSongs();
     };
 
     window.addEventListener('online', checkNetworkStatus);
@@ -199,86 +192,162 @@
       const banner = document.getElementById('offline-banner');
       if (!navigator.onLine) {
         banner.classList.remove('hidden');
+        switchTab('offline');
       } else {
         banner.classList.add('hidden');
       }
     }
 
+    function handleSearchKey(e) {
+      if (e.key === 'Enter') searchGlobalSongs();
+    }
+
+    // Search Real Global Music API
+    async function searchGlobalSongs() {
+      const query = searchInput.value.trim();
+      if (!query) return;
+
+      document.getElementById('loading-spinner').classList.remove('hidden');
+      songListEl.innerHTML = '';
+
+      try {
+        const response = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=25`);
+        const data = await response.json();
+
+        searchResults = data.results.map(track => ({
+          id: track.trackId.toString(),
+          title: track.trackName,
+          artist: track.artistName,
+          cover: track.artworkUrl100.replace('100x100bb', '400x400bb'),
+          url: track.previewUrl
+        }));
+
+        document.getElementById('loading-spinner').classList.add('hidden');
+        switchTab('search');
+      } catch (err) {
+        console.error('Search error:', err);
+        document.getElementById('loading-spinner').classList.add('hidden');
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Failed to search. Check internet connection.</p>`;
+      }
+    }
+
     function switchTab(tab) {
       currentTab = tab;
-      ['all', 'online', 'local'].forEach(t => {
-        const btn = document.getElementById(`tab-${t}`);
-        if (t === tab) {
-          btn.className = "text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black";
-        } else {
-          btn.className = "text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300";
-        }
-      });
+      document.getElementById('tab-search').className = tab === 'search' ? "text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black" : "text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300";
+      document.getElementById('tab-offline').className = tab === 'offline' ? "text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black" : "text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300";
       renderSongs();
     }
 
     function renderSongs() {
       songListEl.innerHTML = '';
-      
-      let filtered = songs;
-      if (currentTab === 'online') filtered = songs.filter(s => s.type === 'online');
-      if (currentTab === 'local') filtered = songs.filter(s => s.type === 'local');
+      const list = currentTab === 'search' ? searchResults : offlineSongs;
 
-      const query = searchInput.value.toLowerCase();
-      if (query) {
-        filtered = filtered.filter(s => s.title.toLowerCase().includes(query) || s.artist.toLowerCase().includes(query));
-      }
-
-      if (filtered.length === 0) {
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No tracks found. Upload local MP3 files to listen offline!</p>`;
+      if (list.length === 0) {
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">${currentTab === 'search' ? 'No songs found.' : 'No downloaded songs yet. Search and tap download to save songs offline!'}</p>`;
         return;
       }
 
-      filtered.forEach((song) => {
-        const index = songs.findIndex(s => s.id === song.id);
-        const isCurrent = currentIndex === index;
+      list.forEach((song, idx) => {
+        const isDownloaded = offlineSongs.some(s => s.id === song.id);
+        const isCurrent = activePlaylist[currentIndex] && activePlaylist[currentIndex].id === song.id;
 
         const card = document.createElement('div');
         card.className = `flex items-center justify-between p-3 rounded-lg cursor-pointer bg-spotify-card transition ${isCurrent ? 'border-l-4 border-green-500' : ''}`;
-        card.onclick = () => playSong(index);
+        card.onclick = () => playSong(list, idx);
 
         card.innerHTML = `
-          <div class="flex items-center gap-3 overflow-hidden">
+          <div class="flex items-center gap-3 overflow-hidden flex-1">
             <img src="${song.cover}" class="w-12 h-12 rounded-md object-cover flex-shrink-0" alt="Cover">
-            <div class="overflow-hidden">
+            <div class="overflow-hidden pr-2">
               <p class="text-sm font-semibold truncate ${isCurrent ? 'text-green-500' : 'text-white'}">${song.title}</p>
-              <p class="text-xs text-zinc-400 truncate">${song.artist} • <span class="uppercase text-[10px] text-zinc-500">${song.type}</span></p>
+              <p class="text-xs text-zinc-400 truncate">${song.artist}</p>
             </div>
           </div>
-          ${song.type === 'local' ? `
-            <button onclick="event.stopPropagation(); removeSong('${song.id}')" class="text-zinc-500 hover:text-red-400 p-2">
-              <i data-lucide="trash-2" class="w-4 h-4"></i>
-            </button>
-          ` : ''}
+          <div class="flex items-center gap-2">
+            ${isDownloaded ? `
+              <span class="text-green-500 text-xs font-bold flex items-center gap-1 p-2">
+                <i data-lucide="check-circle" class="w-4 h-4"></i>
+              </span>
+            ` : `
+              <button onclick="event.stopPropagation(); downloadSongForOffline('${song.id}')" class="text-zinc-400 hover:text-white p-2">
+                <i data-lucide="download" class="w-4 h-4"></i>
+              </button>
+            `}
+            ${currentTab === 'offline' ? `
+              <button onclick="event.stopPropagation(); deleteOfflineSong('${song.id}')" class="text-zinc-500 hover:text-red-400 p-2">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            ` : ''}
+          </div>
         `;
         songListEl.appendChild(card);
       });
       lucide.createIcons();
     }
 
-    function playSong(index) {
-      if (index < 0 || index >= songs.length) return;
+    // Play Song
+    function playSong(playlist, index) {
+      activePlaylist = playlist;
       currentIndex = index;
-      const song = songs[currentIndex];
+      const song = activePlaylist[currentIndex];
 
-      audio.src = song.url;
+      audio.src = song.offlineBlobUrl || song.url;
       audio.play().then(() => {
         isPlaying = true;
         updateUI();
         setupMediaSession(song);
-      }).catch(err => {
-        console.log("Audio play error:", err);
-      });
+      }).catch(err => console.log('Audio playback error:', err));
+    }
+
+    // Save Song to IndexedDB for offline play
+    async function downloadSongForOffline(songId) {
+      const song = searchResults.find(s => s.id === songId);
+      if (!song) return;
+
+      try {
+        const response = await fetch(song.url);
+        const blob = await response.blob();
+
+        const offlineRecord = {
+          ...song,
+          audioBlob: blob,
+          downloadedAt: Date.now()
+        };
+
+        const tx = db.transaction('offline_songs', 'readwrite');
+        tx.objectStore('offline_songs').put(offlineRecord);
+        tx.oncomplete = () => {
+          loadOfflineSongs();
+        };
+      } catch (err) {
+        alert('Could not download track for offline listening.');
+      }
+    }
+
+    function loadOfflineSongs() {
+      if (!db) return;
+      const tx = db.transaction('offline_songs', 'readonly');
+      const store = tx.objectStore('offline_songs');
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        offlineSongs = request.result.map(song => ({
+          ...song,
+          offlineBlobUrl: URL.createObjectURL(song.audioBlob)
+        }));
+        renderSongs();
+      };
+    }
+
+    function deleteOfflineSong(songId) {
+      const tx = db.transaction('offline_songs', 'readwrite');
+      tx.objectStore('offline_songs').delete(songId);
+      tx.oncomplete = () => loadOfflineSongs();
     }
 
     function togglePlayPause() {
-      if (currentIndex === -1 && songs.length > 0) {
-        playSong(0);
+      if (currentIndex === -1 && activePlaylist.length > 0) {
+        playSong(activePlaylist, 0);
         return;
       }
       if (audio.paused) {
@@ -293,7 +362,7 @@
 
     function updateUI() {
       if (currentIndex === -1) return;
-      const song = songs[currentIndex];
+      const song = activePlaylist[currentIndex];
 
       document.getElementById('player-cover').src = song.cover;
       document.getElementById('player-title').innerText = song.title;
@@ -312,15 +381,15 @@
     }
 
     function playNext() {
-      if (songs.length === 0) return;
-      let nextIndex = (currentIndex + 1) % songs.length;
-      playSong(nextIndex);
+      if (activePlaylist.length === 0) return;
+      let nextIndex = (currentIndex + 1) % activePlaylist.length;
+      playSong(activePlaylist, nextIndex);
     }
 
     function playPrev() {
-      if (songs.length === 0) return;
-      let prevIndex = (currentIndex - 1 + songs.length) % songs.length;
-      playSong(prevIndex);
+      if (activePlaylist.length === 0) return;
+      let prevIndex = (currentIndex - 1 + activePlaylist.length) % activePlaylist.length;
+      playSong(activePlaylist, prevIndex);
     }
 
     audio.ontimeupdate = () => {
@@ -345,60 +414,6 @@
       const secs = Math.floor(seconds % 60);
       return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
     }
-
-    document.getElementById('file-upload').addEventListener('change', (e) => {
-      const files = Array.from(e.target.files);
-      files.forEach((file) => {
-        const url = URL.createObjectURL(file);
-        
-        jsmediatags.read(file, {
-          onSuccess: function(tag) {
-            const tags = tag.tags;
-            let coverUrl = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60';
-            
-            if (tags.picture) {
-              const { data, format } = tags.picture;
-              let base64String = "";
-              for (let i = 0; i < data.length; i++) {
-                base64String += String.fromCharCode(data[i]);
-              }
-              coverUrl = `data:${format};base64,${window.btoa(base64String)}`;
-            }
-
-            songs.push({
-              id: 'local-' + Date.now() + Math.random(),
-              title: tags.title || file.name.replace(/\.[^/.]+$/, ""),
-              artist: tags.artist || "Local Audio File",
-              cover: coverUrl,
-              url: url,
-              type: 'local'
-            });
-
-            renderSongs();
-            if (currentIndex === -1) playSong(songs.length - 1);
-          },
-          onError: function() {
-            songs.push({
-              id: 'local-' + Date.now(),
-              title: file.name.replace(/\.[^/.]+$/, ""),
-              artist: "Local Audio File",
-              cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60',
-              url: url,
-              type: 'local'
-            });
-            renderSongs();
-            if (currentIndex === -1) playSong(songs.length - 1);
-          }
-        });
-      });
-    });
-
-    function removeSong(id) {
-      songs = songs.filter(s => s.id !== id);
-      renderSongs();
-    }
-
-    searchInput.oninput = () => renderSongs();
 
     function openFullPlayer() {
       document.getElementById('full-player').classList.remove('translate-y-full');
