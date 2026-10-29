@@ -37,24 +37,24 @@
 
   <!-- Offline Status Banner -->
   <div id="offline-banner" class="hidden bg-amber-600 text-black text-xs font-bold py-1 text-center">
-    Offline Mode — Playing Saved Downloads
+    Offline Mode — Playing Downloaded Songs
   </div>
 
-  <!-- Main View -->
+  <!-- Main Scroll View -->
   <div class="flex-1 overflow-y-auto no-scrollbar pb-36 p-4">
     
     <div class="flex justify-between items-center mb-4 pt-2">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">Spotify Music</h1>
-        <p class="text-xs text-zinc-400">Full Audio Player</p>
+        <p class="text-xs text-zinc-400">Full Songs & Catalogs</p>
       </div>
     </div>
 
-    <!-- Search Input -->
+    <!-- Search Bar -->
     <div class="flex gap-2 mb-4">
       <div class="relative flex-1">
         <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
-        <input type="text" id="search-input" placeholder="Search song or artist (e.g. Diljit Dosanjh, Shubh)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchSongs()">
+        <input type="text" id="search-input" placeholder="Search artist or song (e.g. Sultaan, Shubh)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchSongs()">
       </div>
       <button onclick="searchSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
         Search
@@ -70,12 +70,12 @@
     <!-- Loading Spinner -->
     <div id="loading-spinner" class="hidden text-center py-10">
       <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
-      <p class="text-xs text-zinc-400 mt-2">Loading full track...</p>
+      <p class="text-xs text-zinc-400 mt-2">Loading track list...</p>
     </div>
 
     <!-- Track List -->
     <div class="space-y-2" id="song-list">
-      <p class="text-center text-zinc-500 py-10 text-xs">Search any song or artist name above to play.</p>
+      <p class="text-center text-zinc-500 py-10 text-xs">Search any artist or song above to play full tracks.</p>
     </div>
   </div>
 
@@ -142,7 +142,6 @@
     </div>
   </div>
 
-  <!-- HTML5 Native Audio Engine -->
   <audio id="audio-element" preload="auto"></audio>
 
   <script>
@@ -150,7 +149,6 @@
       navigator.serviceWorker.register('sw.js');
     }
 
-    // Offline IndexedDB Storage
     let db;
     const dbReq = indexedDB.open('SpotifyAudioDB', 1);
     dbReq.onupgradeneeded = (e) => {
@@ -195,7 +193,7 @@
       renderSongs();
     }
 
-    // JSONP API Request directly to JioSaavn Engine
+    // Direct JSONP Script Injection (Bypasses browser CORS completely)
     function searchSongs() {
       const query = searchInput.value.trim();
       if (!query) return;
@@ -208,33 +206,29 @@
 
       const script = document.createElement('script');
       script.id = 'saavn-jsonp';
-      script.src = `https://www.jiosaavn.com/api.php?__call=search.getResults&q=${encodeURIComponent(query)}&_format=json&_marker=0&api_version=4&n=40&callback=handleSaavnResults`;
+      script.src = `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query)}&_format=json&_marker=0&ctx=web64s&api_version=4&callback=handleSaavnSearch`;
       
       script.onerror = () => {
         document.getElementById('loading-spinner').classList.add('hidden');
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Search error. Try again.</p>`;
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Search error. Please try again.</p>`;
       };
 
       document.body.appendChild(script);
     }
 
-    window.handleSaavnResults = function(data) {
+    window.handleSaavnSearch = function(data) {
       document.getElementById('loading-spinner').classList.add('hidden');
 
-      if (data && data.results && data.results.length > 0) {
-        searchResults = data.results.map(item => {
+      if (data && data.songs && data.songs.data && data.songs.data.length > 0) {
+        searchResults = data.songs.data.map(item => {
           let cover = item.image ? item.image.replace('150x150', '500x500') : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60';
-          
-          let previewUrl = item.media_preview_url || '';
-          let fullAudioUrl = previewUrl.replace('preview.saavncdn.com', 'aac.saavncdn.com').replace('_96_p.mp4', '_320.mp4');
-
           return {
             id: item.id,
             title: cleanText(item.title),
-            artist: cleanText(item.more_info?.singers || item.subtitle || 'Artist'),
+            artist: cleanText(item.subtitle || item.singers || 'Artist'),
             cover: cover,
-            url: fullAudioUrl,
-            encryptedUrl: item.more_info?.encrypted_media_url
+            url: item.url,
+            encryptedUrl: item.encrypted_media_url
           };
         });
 
@@ -254,7 +248,7 @@
       const list = currentTab === 'online' ? searchResults : offlineSongs;
 
       if (list.length === 0) {
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">${currentTab === 'online' ? 'Type an artist or song name above.' : 'No downloaded songs. Tap the download icon next to any song to play offline!'}</p>`;
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">${currentTab === 'online' ? 'Type an artist or song name above.' : 'No downloaded songs. Tap download next to any track to save offline!'}</p>`;
         return;
       }
 
@@ -317,7 +311,11 @@
 
     function fetchAuthToken(encUrl) {
       return new Promise((resolve) => {
+        const oldScript = document.getElementById('auth-jsonp');
+        if (oldScript) oldScript.remove();
+
         const script = document.createElement('script');
+        script.id = 'auth-jsonp';
         script.src = `https://www.jiosaavn.com/api.php?__call=song.generateAuthToken&url=${encodeURIComponent(encUrl)}&bitrate=320&_format=json&_marker=0&api_version=4&callback=handleAuthToken`;
         
         window.handleAuthToken = function(data) {
