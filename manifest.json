@@ -1,21 +1,24 @@
 {
-  "name": "My Personal Spotify",
+  "name": "Spotify Personal",
   "short_name": "Spotify",
-  "description": "Personal Spotify-style Music Player App",
+  "description": "Personal Offline & Online Spotify Music Player",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#121212",
-  "theme_color": "#1DB954",
+  "theme_color": "#121212",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/174/174872.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "https://cdn-icons-png.flaticon.com/512/174/174872.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
