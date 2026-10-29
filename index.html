@@ -3,18 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Spotify Personal</title>
+  <title>Spotify Personal - Full Songs</title>
 
-  <!-- PWA & Mobile Display Configuration -->
   <link rel="manifest" href="manifest.json">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#121212">
 
-  <!-- Tailwind CSS & Icons -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- YouTube IFrame API -->
+  <script src="https://www.youtube.com/iframe_api"></script>
 
   <style>
     body {
@@ -22,65 +21,56 @@
       color: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       user-select: none;
-      -webkit-user-select: none;
       -webkit-tap-highlight-color: transparent;
     }
     .spotify-green { color: #1DB954; }
     .bg-spotify-green { background-color: #1DB954; }
     .bg-spotify-card { background-color: #181818; }
     .bg-spotify-card:active { background-color: #282828; }
-    
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-    input[type="range"] {
-      accent-color: #1DB954;
-    }
+    input[type="range"] { accent-color: #1DB954; }
   </style>
 </head>
 <body class="h-screen flex flex-col justify-between overflow-hidden">
 
-  <!-- Network Status Banner -->
-  <div id="offline-banner" class="hidden bg-amber-600 text-black text-xs font-bold py-1 text-center">
-    Offline Mode — Playing Downloaded Tracks
-  </div>
-
-  <!-- Main Scrollable Screen -->
-  <div class="flex-1 overflow-y-auto no-scrollbar pb-36 p-4" id="main-content">
+  <!-- Main Scroll View -->
+  <div class="flex-1 overflow-y-auto no-scrollbar pb-36 p-4">
     
-    <!-- Header -->
     <div class="flex justify-between items-center mb-4 pt-2">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">Spotify Music</h1>
-        <p class="text-xs text-zinc-400">Search millions of songs & listen offline</p>
+        <p class="text-xs text-zinc-400">Full Songs & Discographies</p>
       </div>
     </div>
 
-    <!-- Search Bar -->
+    <!-- Search Controls -->
     <div class="flex gap-2 mb-4">
       <div class="relative flex-1">
         <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
-        <input type="text" id="search-input" placeholder="Search any artist, song (e.g. Shubh)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="handleSearchKey(event)">
+        <input type="text" id="search-input" placeholder="Search artist or full song (e.g., Shubh)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchFullSongs()">
       </div>
-      <button onclick="searchGlobalSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
+      <button onclick="searchFullSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
         Search
       </button>
     </div>
 
-    <!-- Navigation Tabs -->
-    <div class="flex gap-2 mb-4 border-b border-zinc-800 pb-2">
-      <button onclick="switchTab('search')" id="tab-search" class="text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black">Search Results</button>
-      <button onclick="switchTab('offline')" id="tab-offline" class="text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">Downloaded (Offline)</button>
-    </div>
+    <!-- Results Count -->
+    <div id="results-count" class="text-xs text-zinc-400 mb-3 hidden"></div>
 
     <!-- Loading Spinner -->
     <div id="loading-spinner" class="hidden text-center py-10">
       <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
-      <p class="text-xs text-zinc-400 mt-2">Searching songs...</p>
+      <p class="text-xs text-zinc-400 mt-2">Loading full songs catalog...</p>
     </div>
 
-    <!-- Song List Container -->
+    <!-- Song List -->
     <div class="space-y-2" id="song-list"></div>
+  </div>
+
+  <!-- Hidden YouTube Engine -->
+  <div class="hidden">
+    <div id="yt-player"></div>
   </div>
 
   <!-- Sticky Mini Player -->
@@ -94,7 +84,7 @@
     </div>
 
     <div class="flex items-center gap-3">
-      <button onclick="togglePlayPause()" class="w-10 h-10 rounded-full bg-spotify-green text-black flex items-center justify-center focus:outline-none">
+      <button onclick="togglePlayPause()" class="w-10 h-10 rounded-full bg-spotify-green text-black flex items-center justify-center">
         <i id="play-icon" data-lucide="play" class="w-5 h-5 fill-current"></i>
       </button>
       <button onclick="playNext()" class="text-zinc-400 p-1">
@@ -109,7 +99,7 @@
       <button onclick="closeFullPlayer()" class="text-zinc-400 p-2">
         <i data-lucide="chevron-down" class="w-7 h-7"></i>
       </button>
-      <span class="text-xs uppercase tracking-widest text-zinc-400 font-bold">Now Playing</span>
+      <span class="text-xs uppercase tracking-widest text-zinc-400 font-bold">Now Playing Full Track</span>
       <div class="w-7"></div>
     </div>
 
@@ -118,11 +108,9 @@
     </div>
 
     <div>
-      <div class="flex justify-between items-center mb-6">
-        <div class="overflow-hidden pr-4">
-          <h2 id="full-title" class="text-xl font-bold text-white truncate">Select a track</h2>
-          <p id="full-artist" class="text-sm text-zinc-400 truncate">Tap to play music</p>
-        </div>
+      <div class="mb-6">
+        <h2 id="full-title" class="text-xl font-bold text-white truncate">Select a track</h2>
+        <p id="full-artist" class="text-sm text-zinc-400 truncate">Tap to play music</p>
       </div>
 
       <div class="mb-6">
@@ -147,113 +135,89 @@
     </div>
   </div>
 
-  <audio id="audio-element" preload="auto"></audio>
-
   <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js');
-    }
-
-    // Database for storing offline audio files
-    let db;
-    const request = indexedDB.open('SpotifyOfflineDB', 1);
-    request.onupgradeneeded = (e) => {
-      db = e.target.result;
-      if (!db.objectStoreNames.contains('offline_songs')) {
-        db.createObjectStore('offline_songs', { keyPath: 'id' });
-      }
-    };
-    request.onsuccess = (e) => { db = e.target.result; loadOfflineSongs(); };
-
-    let searchResults = [];
-    let offlineSongs = [];
-    let activePlaylist = [];
-    let currentTab = 'search';
+    let ytPlayer;
+    let songs = [];
     let currentIndex = -1;
     let isPlaying = false;
+    let updateTimer;
 
-    const audio = document.getElementById('audio-element');
-    const songListEl = document.getElementById('song-list');
-    const searchInput = document.getElementById('search-input');
-    const seekBar = document.getElementById('seek-bar');
+    function onYouTubeIframeAPIReady() {
+      ytPlayer = new YT.Player('yt-player', {
+        height: '0',
+        width: '0',
+        events: {
+          'onStateChange': onPlayerStateChange
+        }
+      });
+    }
 
     window.onload = () => {
       lucide.createIcons();
-      checkNetworkStatus();
-      // Default Search for Shubh on app open
-      searchInput.value = 'Shubh';
-      searchGlobalSongs();
+      document.getElementById('search-input').value = 'Shubh';
+      searchFullSongs();
     };
 
-    window.addEventListener('online', checkNetworkStatus);
-    window.addEventListener('offline', checkNetworkStatus);
-
-    function checkNetworkStatus() {
-      const banner = document.getElementById('offline-banner');
-      if (!navigator.onLine) {
-        banner.classList.remove('hidden');
-        switchTab('offline');
-      } else {
-        banner.classList.add('hidden');
-      }
-    }
-
-    function handleSearchKey(e) {
-      if (e.key === 'Enter') searchGlobalSongs();
-    }
-
-    // Search Real Global Music API
-    async function searchGlobalSongs() {
-      const query = searchInput.value.trim();
+    async function searchFullSongs() {
+      const query = document.getElementById('search-input').value.trim();
       if (!query) return;
 
       document.getElementById('loading-spinner').classList.remove('hidden');
-      songListEl.innerHTML = '';
+      document.getElementById('song-list').innerHTML = '';
 
       try {
-        const response = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=25`);
-        const data = await response.json();
+        // Fetch extended results (up to 50 tracks) via Invidious API
+        const res = await fetch(`https://inv.api.store/api/v1/search?q=${encodeURIComponent(query + ' full song audio')}&type=video`);
+        const data = await res.json();
 
-        searchResults = data.results.map(track => ({
-          id: track.trackId.toString(),
-          title: track.trackName,
-          artist: track.artistName,
-          cover: track.artworkUrl100.replace('100x100bb', '400x400bb'),
-          url: track.previewUrl
+        songs = data.map(item => ({
+          id: item.videoId,
+          title: item.title,
+          artist: item.author || query,
+          cover: item.videoThumbnails ? item.videoThumbnails.find(t => t.quality === 'medium')?.url || item.videoThumbnails[0].url : `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`,
+          duration: item.lengthSeconds
         }));
 
         document.getElementById('loading-spinner').classList.add('hidden');
-        switchTab('search');
+        document.getElementById('results-count').innerText = `Found ${songs.length} full songs for "${query}"`;
+        document.getElementById('results-count').classList.remove('hidden');
+        renderSongs();
       } catch (err) {
-        console.error('Search error:', err);
-        document.getElementById('loading-spinner').classList.add('hidden');
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Failed to search. Check internet connection.</p>`;
+        // Fallback search endpoint
+        fetchFallback(query);
       }
     }
 
-    function switchTab(tab) {
-      currentTab = tab;
-      document.getElementById('tab-search').className = tab === 'search' ? "text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black" : "text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300";
-      document.getElementById('tab-offline').className = tab === 'offline' ? "text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black" : "text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300";
-      renderSongs();
+    async function fetchFallback(query) {
+      try {
+        const res = await fetch(`https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(query + ' song')}&filter=music_videos`);
+        const data = await res.json();
+
+        songs = data.items.map(item => ({
+          id: item.url.split('v=')[1],
+          title: item.title,
+          artist: item.uploaderName || query,
+          cover: item.thumbnail,
+          duration: item.duration
+        }));
+
+        document.getElementById('loading-spinner').classList.add('hidden');
+        renderSongs();
+      } catch(e) {
+        document.getElementById('loading-spinner').classList.add('hidden');
+        document.getElementById('song-list').innerHTML = '<p class="text-center text-zinc-500 py-10 text-xs">Error fetching songs. Try searching again.</p>';
+      }
     }
 
     function renderSongs() {
+      const songListEl = document.getElementById('song-list');
       songListEl.innerHTML = '';
-      const list = currentTab === 'search' ? searchResults : offlineSongs;
 
-      if (list.length === 0) {
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">${currentTab === 'search' ? 'No songs found.' : 'No downloaded songs yet. Search and tap download to save songs offline!'}</p>`;
-        return;
-      }
-
-      list.forEach((song, idx) => {
-        const isDownloaded = offlineSongs.some(s => s.id === song.id);
-        const isCurrent = activePlaylist[currentIndex] && activePlaylist[currentIndex].id === song.id;
-
+      songs.forEach((song, idx) => {
+        const isCurrent = currentIndex === idx;
         const card = document.createElement('div');
         card.className = `flex items-center justify-between p-3 rounded-lg cursor-pointer bg-spotify-card transition ${isCurrent ? 'border-l-4 border-green-500' : ''}`;
-        card.onclick = () => playSong(list, idx);
+        card.onclick = () => playSong(idx);
 
         card.innerHTML = `
           <div class="flex items-center gap-3 overflow-hidden flex-1">
@@ -263,106 +227,59 @@
               <p class="text-xs text-zinc-400 truncate">${song.artist}</p>
             </div>
           </div>
-          <div class="flex items-center gap-2">
-            ${isDownloaded ? `
-              <span class="text-green-500 text-xs font-bold flex items-center gap-1 p-2">
-                <i data-lucide="check-circle" class="w-4 h-4"></i>
-              </span>
-            ` : `
-              <button onclick="event.stopPropagation(); downloadSongForOffline('${song.id}')" class="text-zinc-400 hover:text-white p-2">
-                <i data-lucide="download" class="w-4 h-4"></i>
-              </button>
-            `}
-            ${currentTab === 'offline' ? `
-              <button onclick="event.stopPropagation(); deleteOfflineSong('${song.id}')" class="text-zinc-500 hover:text-red-400 p-2">
-                <i data-lucide="trash-2" class="w-4 h-4"></i>
-              </button>
-            ` : ''}
-          </div>
+          <span class="text-xs text-zinc-500 font-bold px-2 py-1 bg-zinc-900 rounded">FULL</span>
         `;
         songListEl.appendChild(card);
       });
       lucide.createIcons();
     }
 
-    // Play Song
-    function playSong(playlist, index) {
-      activePlaylist = playlist;
+    function playSong(index) {
+      if (index < 0 || index >= songs.length) return;
       currentIndex = index;
-      const song = activePlaylist[currentIndex];
+      const song = songs[currentIndex];
 
-      audio.src = song.offlineBlobUrl || song.url;
-      audio.play().then(() => {
+      if (ytPlayer && ytPlayer.loadVideoById) {
+        ytPlayer.loadVideoById(song.id);
         isPlaying = true;
         updateUI();
-        setupMediaSession(song);
-      }).catch(err => console.log('Audio playback error:', err));
-    }
-
-    // Save Song to IndexedDB for offline play
-    async function downloadSongForOffline(songId) {
-      const song = searchResults.find(s => s.id === songId);
-      if (!song) return;
-
-      try {
-        const response = await fetch(song.url);
-        const blob = await response.blob();
-
-        const offlineRecord = {
-          ...song,
-          audioBlob: blob,
-          downloadedAt: Date.now()
-        };
-
-        const tx = db.transaction('offline_songs', 'readwrite');
-        tx.objectStore('offline_songs').put(offlineRecord);
-        tx.oncomplete = () => {
-          loadOfflineSongs();
-        };
-      } catch (err) {
-        alert('Could not download track for offline listening.');
+        startProgressLoop();
       }
-    }
-
-    function loadOfflineSongs() {
-      if (!db) return;
-      const tx = db.transaction('offline_songs', 'readonly');
-      const store = tx.objectStore('offline_songs');
-      const request = store.getAll();
-
-      request.onsuccess = () => {
-        offlineSongs = request.result.map(song => ({
-          ...song,
-          offlineBlobUrl: URL.createObjectURL(song.audioBlob)
-        }));
-        renderSongs();
-      };
-    }
-
-    function deleteOfflineSong(songId) {
-      const tx = db.transaction('offline_songs', 'readwrite');
-      tx.objectStore('offline_songs').delete(songId);
-      tx.oncomplete = () => loadOfflineSongs();
     }
 
     function togglePlayPause() {
-      if (currentIndex === -1 && activePlaylist.length > 0) {
-        playSong(activePlaylist, 0);
+      if (currentIndex === -1 && songs.length > 0) {
+        playSong(0);
         return;
       }
-      if (audio.paused) {
-        audio.play();
-        isPlaying = true;
-      } else {
-        audio.pause();
+      if (!ytPlayer) return;
+
+      const state = ytPlayer.getPlayerState();
+      if (state === YT.PlayerState.PLAYING) {
+        ytPlayer.pauseVideo();
         isPlaying = false;
+      } else {
+        ytPlayer.playVideo();
+        isPlaying = true;
       }
       updateUI();
     }
 
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.ENDED) {
+        playNext();
+      } else if (event.data === YT.PlayerState.PLAYING) {
+        isPlaying = true;
+        updateUI();
+      } else if (event.data === YT.PlayerState.PAUSED) {
+        isPlaying = false;
+        updateUI();
+      }
+    }
+
     function updateUI() {
       if (currentIndex === -1) return;
-      const song = activePlaylist[currentIndex];
+      const song = songs[currentIndex];
 
       document.getElementById('player-cover').src = song.cover;
       document.getElementById('player-title').innerText = song.title;
@@ -380,39 +297,42 @@
       lucide.createIcons();
     }
 
+    function startProgressLoop() {
+      clearInterval(updateTimer);
+      updateTimer = setInterval(() => {
+        if (ytPlayer && ytPlayer.getCurrentTime && isPlaying) {
+          const currentTime = ytPlayer.getCurrentTime();
+          const duration = ytPlayer.getDuration();
+          if (duration > 0) {
+            document.getElementById('seek-bar').value = (currentTime / duration) * 100;
+            document.getElementById('current-time').innerText = formatTime(currentTime);
+            document.getElementById('total-duration').innerText = formatTime(duration);
+          }
+        }
+      }, 1000);
+    }
+
+    document.getElementById('seek-bar').oninput = function() {
+      if (ytPlayer && ytPlayer.getDuration) {
+        const duration = ytPlayer.getDuration();
+        ytPlayer.seekTo((this.value / 100) * duration, true);
+      }
+    };
+
     function playNext() {
-      if (activePlaylist.length === 0) return;
-      let nextIndex = (currentIndex + 1) % activePlaylist.length;
-      playSong(activePlaylist, nextIndex);
+      if (songs.length === 0) return;
+      playSong((currentIndex + 1) % songs.length);
     }
 
     function playPrev() {
-      if (activePlaylist.length === 0) return;
-      let prevIndex = (currentIndex - 1 + activePlaylist.length) % activePlaylist.length;
-      playSong(activePlaylist, prevIndex);
+      if (songs.length === 0) return;
+      playSong((currentIndex - 1 + songs.length) % songs.length);
     }
 
-    audio.ontimeupdate = () => {
-      if (audio.duration) {
-        const progress = (audio.currentTime / audio.duration) * 100;
-        seekBar.value = progress;
-        document.getElementById('current-time').innerText = formatTime(audio.currentTime);
-        document.getElementById('total-duration').innerText = formatTime(audio.duration);
-      }
-    };
-
-    audio.onended = () => playNext();
-
-    seekBar.oninput = () => {
-      if (audio.duration) {
-        audio.currentTime = (seekBar.value / 100) * audio.duration;
-      }
-    };
-
-    function formatTime(seconds) {
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
     }
 
     function openFullPlayer() {
@@ -420,21 +340,6 @@
     }
     function closeFullPlayer() {
       document.getElementById('full-player').classList.add('translate-y-full');
-    }
-
-    function setupMediaSession(song) {
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: song.title,
-          artist: song.artist,
-          artwork: [{ src: song.cover, sizes: '512x512', type: 'image/jpeg' }]
-        });
-
-        navigator.mediaSession.setActionHandler('play', () => togglePlayPause());
-        navigator.mediaSession.setActionHandler('pause', () => togglePlayPause());
-        navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
-        navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
-      }
     }
   </script>
 </body>
