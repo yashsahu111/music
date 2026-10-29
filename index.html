@@ -61,7 +61,7 @@
 
     <div id="loading-spinner" class="hidden text-center py-10">
       <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
-      <p class="text-xs text-zinc-400 mt-2">Loading full songs...</p>
+      <p id="spinner-text" class="text-xs text-zinc-400 mt-2">Loading songs...</p>
     </div>
 
     <div class="space-y-2" id="song-list">
@@ -137,7 +137,7 @@
     }
 
     let db;
-    const dbReq = indexedDB.open('SpotifyAudioDB_v2', 1);
+    const dbReq = indexedDB.open('SpotifyAudioDB_v3', 1);
     dbReq.onupgradeneeded = (e) => {
       db = e.target.result;
       if (!db.objectStoreNames.contains('downloads')) {
@@ -184,6 +184,7 @@
       const query = searchInput.value.trim();
       if (!query) return;
 
+      document.getElementById('spinner-text').innerText = "Loading tracks...";
       document.getElementById('loading-spinner').classList.remove('hidden');
       songListEl.innerHTML = '';
 
@@ -210,7 +211,7 @@
       const list = currentTab === 'online' ? searchResults : offlineSongs;
 
       if (list.length === 0) {
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">${currentTab === 'online' ? 'Type an artist or song name above.' : 'No downloaded songs. Tap download next to any song to save offline!'}</p>`;
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">${currentTab === 'online' ? 'Type an artist or song name above.' : 'No downloaded songs. Tap download next to any song to play offline!'}</p>`;
         return;
       }
 
@@ -250,13 +251,38 @@
       lucide.createIcons();
     }
 
-    function playSong(index) {
+    async function playSong(index) {
       const list = currentTab === 'online' ? searchResults : offlineSongs;
       if (index < 0 || index >= list.length) return;
       currentIndex = index;
       const song = list[currentIndex];
 
-      audio.src = song.offlineBlobUrl || song.url;
+      let streamUrl = song.offlineBlobUrl;
+
+      // Online track stream resolution
+      if (!streamUrl) {
+        document.getElementById('spinner-text').innerText = "Fetching audio stream...";
+        document.getElementById('loading-spinner').classList.remove('hidden');
+
+        try {
+          const res = await fetch(`/api/play?id=${encodeURIComponent(song.id)}`);
+          const data = await res.json();
+
+          if (data && data.streamUrl) {
+            streamUrl = data.streamUrl;
+            song.url = streamUrl;
+          } else {
+            throw new Error('No stream');
+          }
+        } catch (err) {
+          document.getElementById('loading-spinner').classList.add('hidden');
+          alert('Failed to play stream. Try another song.');
+          return;
+        }
+        document.getElementById('loading-spinner').classList.add('hidden');
+      }
+
+      audio.src = streamUrl;
       audio.play().then(() => {
         isPlaying = true;
         updateUI();
@@ -269,7 +295,14 @@
       if (!song) return;
 
       try {
-        const response = await fetch(song.url);
+        let streamUrl = song.url;
+        if (!streamUrl) {
+          const res = await fetch(`/api/play?id=${encodeURIComponent(song.id)}`);
+          const data = await res.json();
+          streamUrl = data.streamUrl;
+        }
+
+        const response = await fetch(streamUrl);
         const blob = await response.blob();
 
         const record = {
@@ -284,7 +317,7 @@
         tx.objectStore('downloads').put(record);
         tx.oncomplete = () => loadOfflineSongs();
       } catch (err) {
-        alert('Could not store audio for offline listening.');
+        alert('Could not save audio for offline playback.');
       }
     }
 
