@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>My Personal Spotify</title>
 
+  <!-- PWA Manifest Link -->
+  <link rel="manifest" href="manifest.json">
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
@@ -26,9 +29,8 @@
     .bg-spotify-card:hover { background-color: #282828; }
     .bg-spotify-player { background-color: #181818; }
     
-    /* Hide scrollbar for Chrome, Safari and Opera */
+    /* Hide scrollbars */
     .no-scrollbar::-webkit-scrollbar { display: none; }
-    /* Hide scrollbar for IE, Edge and Firefox */
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
     input[type="range"] {
@@ -108,7 +110,7 @@
           <h2 id="full-title" class="text-xl font-bold text-white truncate">No track selected</h2>
           <p id="full-artist" class="text-sm text-zinc-400 truncate">Tap to play music</p>
         </div>
-        <button id="like-btn" onclick="toggleLike()" class="text-zinc-400 hover:text-green-500">
+        <button id="like-btn" class="text-zinc-400 hover:text-green-500">
           <i data-lucide="heart" class="w-6 h-6"></i>
         </button>
       </div>
@@ -124,7 +126,7 @@
 
       <!-- Player Controls -->
       <div class="flex justify-between items-center mb-8 px-4">
-        <button onclick="toggleShuffle()" id="shuffle-btn" class="text-zinc-400 hover:text-white">
+        <button class="text-zinc-400 hover:text-white">
           <i data-lucide="shuffle" class="w-5 h-5"></i>
         </button>
         <button onclick="playPrev()" class="text-white hover:text-zinc-300">
@@ -136,7 +138,7 @@
         <button onclick="playNext()" class="text-white hover:text-zinc-300">
           <i data-lucide="skip-forward" class="w-7 h-7"></i>
         </button>
-        <button onclick="toggleRepeat()" id="repeat-btn" class="text-zinc-400 hover:text-white">
+        <button class="text-zinc-400 hover:text-white">
           <i data-lucide="repeat" class="w-5 h-5"></i>
         </button>
       </div>
@@ -147,35 +149,35 @@
   <audio id="audio-element"></audio>
 
   <script>
-    // Initial Sample Track
+    // Register Service Worker for PWA compliance
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+
+    // Initial Sample Song
     let songs = [
       {
         id: '1',
         title: 'Acoustic Breeze',
         artist: 'Benjamin Tissot',
         cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60',
-        url: 'https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3',
-        liked: false
+        url: 'https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3'
       }
     ];
 
     let currentIndex = -1;
     let isPlaying = false;
-    let isShuffle = false;
-    let isRepeat = false;
 
     const audio = document.getElementById('audio-element');
     const songListEl = document.getElementById('song-list');
     const searchInput = document.getElementById('search-input');
     const seekBar = document.getElementById('seek-bar');
 
-    // Initialize App
     window.onload = () => {
       lucide.createIcons();
       renderSongs(songs);
     };
 
-    // Render Songs
     function renderSongs(songArray) {
       songListEl.innerHTML = '';
       if (songArray.length === 0) {
@@ -206,7 +208,6 @@
       lucide.createIcons();
     }
 
-    // Play Song
     function playSong(index) {
       if (index < 0 || index >= songs.length) return;
       currentIndex = index;
@@ -220,7 +221,6 @@
       setupMediaSession(song);
     }
 
-    // Toggle Play / Pause
     function togglePlayPause() {
       if (currentIndex === -1 && songs.length > 0) {
         playSong(0);
@@ -236,22 +236,18 @@
       updateUI();
     }
 
-    // Update UI elements
     function updateUI() {
       if (currentIndex === -1) return;
       const song = songs[currentIndex];
 
-      // Mini Player
       document.getElementById('player-cover').src = song.cover;
       document.getElementById('player-title').innerText = song.title;
       document.getElementById('player-artist').innerText = song.artist;
 
-      // Full Player
       document.getElementById('full-cover').src = song.cover;
       document.getElementById('full-title').innerText = song.title;
       document.getElementById('full-artist').innerText = song.artist;
 
-      // Icons
       const playIcon = isPlaying ? 'pause' : 'play';
       document.getElementById('play-icon').setAttribute('data-lucide', playIcon);
       document.getElementById('full-play-icon').setAttribute('data-lucide', playIcon);
@@ -260,26 +256,18 @@
       lucide.createIcons();
     }
 
-    // Next Track
     function playNext() {
       if (songs.length === 0) return;
-      if (isShuffle) {
-        let randomIndex = Math.floor(Math.random() * songs.length);
-        playSong(randomIndex);
-      } else {
-        let nextIndex = (currentIndex + 1) % songs.length;
-        playSong(nextIndex);
-      }
+      let nextIndex = (currentIndex + 1) % songs.length;
+      playSong(nextIndex);
     }
 
-    // Previous Track
     function playPrev() {
       if (songs.length === 0) return;
       let prevIndex = (currentIndex - 1 + songs.length) % songs.length;
       playSong(prevIndex);
     }
 
-    // Audio Event Listeners
     audio.ontimeupdate = () => {
       if (audio.duration) {
         const progress = (audio.currentTime / audio.duration) * 100;
@@ -289,13 +277,7 @@
       }
     };
 
-    audio.onended = () => {
-      if (isRepeat) {
-        playSong(currentIndex);
-      } else {
-        playNext();
-      }
-    };
+    audio.onended = () => playNext();
 
     seekBar.oninput = () => {
       if (audio.duration) {
@@ -309,13 +291,11 @@
       return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
     }
 
-    // Handle Local File Uploads
     document.getElementById('file-upload').addEventListener('change', (e) => {
       const files = Array.from(e.target.files);
       files.forEach((file) => {
         const url = URL.createObjectURL(file);
         
-        // Parse ID3 Tags using jsmediatags
         jsmediatags.read(file, {
           onSuccess: function(tag) {
             const tags = tag.tags;
@@ -335,21 +315,19 @@
               title: tags.title || file.name.replace(/\.[^/.]+$/, ""),
               artist: tags.artist || "Unknown Artist",
               cover: coverUrl,
-              url: url,
-              liked: false
+              url: url
             });
 
             renderSongs(songs);
             if (currentIndex === -1) playSong(songs.length - 1);
           },
-          onError: function(error) {
+          onError: function() {
             songs.push({
               id: Date.now().toString(),
               title: file.name.replace(/\.[^/.]+$/, ""),
               artist: "Local Track",
               cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=60',
-              url: url,
-              liked: false
+              url: url
             });
             renderSongs(songs);
             if (currentIndex === -1) playSong(songs.length - 1);
@@ -358,20 +336,17 @@
       });
     });
 
-    // Remove Song
     function removeSong(id) {
       songs = songs.filter(s => s.id !== id);
       renderSongs(songs);
     }
 
-    // Search Filter
     searchInput.oninput = () => {
       const query = searchInput.value.toLowerCase();
       const filtered = songs.filter(s => s.title.toLowerCase().includes(query) || s.artist.toLowerCase().includes(query));
       renderSongs(filtered);
     };
 
-    // Full Player Modal Controls
     function openFullPlayer() {
       document.getElementById('full-player').classList.remove('translate-y-full');
     }
@@ -379,7 +354,6 @@
       document.getElementById('full-player').classList.add('translate-y-full');
     }
 
-    // Media Session API for Phone Lock Screen
     function setupMediaSession(song) {
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
