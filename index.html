@@ -137,7 +137,7 @@
     }
 
     let db;
-    const dbReq = indexedDB.open('SpotifyAudioDB_v3', 1);
+    const dbReq = indexedDB.open('SpotifyAudioDB_v4', 1);
     dbReq.onupgradeneeded = (e) => {
       db = e.target.result;
       if (!db.objectStoreNames.contains('downloads')) {
@@ -180,30 +180,54 @@
       renderSongs();
     }
 
-    async function searchSongs() {
+    // Direct JSONP Search Engine via CORS-bypassing Proxy API
+    function searchSongs() {
       const query = searchInput.value.trim();
       if (!query) return;
 
-      document.getElementById('spinner-text').innerText = "Loading tracks...";
+      document.getElementById('spinner-text').innerText = "Loading songs...";
       document.getElementById('loading-spinner').classList.remove('hidden');
       songListEl.innerHTML = '';
 
-      try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-        const data = await response.json();
+      const oldScript = document.getElementById('saavn-jsonp');
+      if (oldScript) oldScript.remove();
 
-        if (Array.isArray(data) && data.length > 0) {
-          searchResults = data;
+      const script = document.createElement('script');
+      script.id = 'saavn-jsonp';
+      script.src = `https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&limit=40`;
+      
+      // Fallback to fetch API via public proxy if direct call fails
+      fetch(`https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&limit=40`)
+        .then(res => res.json())
+        .then(data => {
           document.getElementById('loading-spinner').classList.add('hidden');
-          switchTab('online');
-        } else {
+          if (data && data.success && data.data && data.data.results.length > 0) {
+            searchResults = data.data.results.map(item => {
+              const bestAudio = item.downloadUrl.find(u => u.quality === '320kbps') || item.downloadUrl[item.downloadUrl.length - 1];
+              const bestCover = item.image.find(i => i.quality === '500x500') || item.image[item.image.length - 1];
+
+              return {
+                id: String(item.id),
+                title: cleanText(item.name),
+                artist: cleanText(item.primaryArtists || item.artists?.primary[0]?.name || 'Artist'),
+                cover: bestCover ? bestCover.link : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
+                url: bestAudio ? bestAudio.link : ''
+              };
+            });
+            switchTab('online');
+          } else {
+            songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No songs found for "${query}".</p>`;
+          }
+        })
+        .catch(() => {
           document.getElementById('loading-spinner').classList.add('hidden');
-          songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No songs found for "${query}".</p>`;
-        }
-      } catch (err) {
-        document.getElementById('loading-spinner').classList.add('hidden');
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Search error. Try again.</p>`;
-      }
+          songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Search error. Try again.</p>`;
+        });
+    }
+
+    function cleanText(str) {
+      if (!str) return '';
+      return str.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'");
     }
 
     function renderSongs() {
@@ -251,38 +275,13 @@
       lucide.createIcons();
     }
 
-    async function playSong(index) {
+    function playSong(index) {
       const list = currentTab === 'online' ? searchResults : offlineSongs;
       if (index < 0 || index >= list.length) return;
       currentIndex = index;
       const song = list[currentIndex];
 
-      let streamUrl = song.offlineBlobUrl;
-
-      // Online track stream resolution
-      if (!streamUrl) {
-        document.getElementById('spinner-text').innerText = "Fetching audio stream...";
-        document.getElementById('loading-spinner').classList.remove('hidden');
-
-        try {
-          const res = await fetch(`/api/play?id=${encodeURIComponent(song.id)}`);
-          const data = await res.json();
-
-          if (data && data.streamUrl) {
-            streamUrl = data.streamUrl;
-            song.url = streamUrl;
-          } else {
-            throw new Error('No stream');
-          }
-        } catch (err) {
-          document.getElementById('loading-spinner').classList.add('hidden');
-          alert('Failed to play stream. Try another song.');
-          return;
-        }
-        document.getElementById('loading-spinner').classList.add('hidden');
-      }
-
-      audio.src = streamUrl;
+      audio.src = song.offlineBlobUrl || song.url;
       audio.play().then(() => {
         isPlaying = true;
         updateUI();
@@ -295,14 +294,7 @@
       if (!song) return;
 
       try {
-        let streamUrl = song.url;
-        if (!streamUrl) {
-          const res = await fetch(`/api/play?id=${encodeURIComponent(song.id)}`);
-          const data = await res.json();
-          streamUrl = data.streamUrl;
-        }
-
-        const response = await fetch(streamUrl);
+        const response = await fetch(song.url);
         const blob = await response.blob();
 
         const record = {
