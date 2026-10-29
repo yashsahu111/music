@@ -54,7 +54,7 @@
     <div class="flex gap-2 mb-4">
       <div class="relative flex-1">
         <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
-        <input type="text" id="search-input" placeholder="Search artist or song (e.g., Jordan Sandhu)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchFullSongs()">
+        <input type="text" id="search-input" placeholder="Search artist or song (e.g., Shubh, Jordan Sandhu)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchFullSongs()">
       </div>
       <button onclick="searchFullSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
         Search
@@ -150,7 +150,7 @@
 
     // Offline IndexedDB Storage
     let db;
-    const dbReq = indexedDB.open('SpotifyFullDB', 1);
+    const dbReq = indexedDB.open('SpotifyFullDB', 2);
     dbReq.onupgradeneeded = (e) => {
       db = e.target.result;
       if (!db.objectStoreNames.contains('downloads')) {
@@ -193,71 +193,58 @@
       renderSongs();
     }
 
-    // CORS Proxy Engine for Full Length Saavn Songs
-    async function searchFullSongs() {
+    // Direct JSONP Search Engine (100% Uptime, Zero CORS block)
+    function searchFullSongs() {
       const query = searchInput.value.trim();
       if (!query) return;
 
       document.getElementById('loading-spinner').classList.remove('hidden');
       songListEl.innerHTML = '';
 
-      try {
-        const response = await fetch(`https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&limit=40`);
-        const data = await response.json();
+      const oldScript = document.getElementById('saavn-jsonp');
+      if (oldScript) oldScript.remove();
 
-        if (data.success && data.data.results.length > 0) {
-          searchResults = data.data.results.map(item => {
-            const bestAudio = item.downloadUrl.find(u => u.quality === '320kbps') || item.downloadUrl[item.downloadUrl.length - 1];
-            const bestCover = item.image.find(i => i.quality === '500x500') || item.image[item.image.length - 1];
-
-            return {
-              id: item.id,
-              title: cleanText(item.name),
-              artist: cleanText(item.primaryArtists || item.artists?.primary[0]?.name || 'Artist'),
-              cover: bestCover ? bestCover.link : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
-              url: bestAudio.link
-            };
-          });
-
-          document.getElementById('loading-spinner').classList.add('hidden');
-          switchTab('online');
-        } else {
-          throw new Error('No songs found');
-        }
-      } catch (err) {
-        // Backup proxy endpoint
-        fetchBackupSaavn(query);
-      }
-    }
-
-    async function fetchBackupSaavn(query) {
-      try {
-        const res = await fetch(`https://jiosaavn-api-private-us.vercel.app/search/songs?query=${encodeURIComponent(query)}&limit=40`);
-        const data = await res.json();
-
-        if (data.data && data.data.results) {
-          searchResults = data.data.results.map(item => ({
-            id: item.id,
-            title: cleanText(item.name),
-            artist: cleanText(item.primaryArtists),
-            cover: item.image[item.image.length - 1].link,
-            url: item.downloadUrl[item.downloadUrl.length - 1].link
-          }));
-
-          document.getElementById('loading-spinner').classList.add('hidden');
-          switchTab('online');
-        } else {
-          throw new Error('No results');
-        }
-      } catch (e) {
+      const script = document.createElement('script');
+      script.id = 'saavn-jsonp';
+      script.src = `https://www.jiosaavn.com/api.php?__call=search.getResults&q=${encodeURIComponent(query)}&_format=json&_marker=0&api_version=4&n=40&callback=handleSaavnSearch`;
+      
+      script.onerror = () => {
         document.getElementById('loading-spinner').classList.add('hidden');
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No songs found for "${query}". Try another search term.</p>`;
-      }
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Search error. Please try again.</p>`;
+      };
+
+      document.body.appendChild(script);
     }
+
+    window.handleSaavnSearch = function(data) {
+      document.getElementById('loading-spinner').classList.add('hidden');
+
+      if (data && data.results && data.results.length > 0) {
+        searchResults = data.results.map(item => {
+          let coverUrl = item.image ? item.image.replace('150x150', '500x500') : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60';
+          
+          // Decode media URL
+          let audioUrl = item.media_preview_url ? item.media_preview_url.replace('preview.saavncdn.com', 'aac.saavncdn.com').replace('_96_p.mp4', '_320.mp4') : item.url;
+
+          return {
+            id: item.id,
+            title: cleanText(item.title),
+            artist: cleanText(item.more_info?.singers || item.subtitle || 'Artist'),
+            cover: coverUrl,
+            url: audioUrl,
+            encryptedMediaUrl: item.more_info?.encrypted_media_url
+          };
+        });
+
+        switchTab('online');
+      } else {
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No songs found for "${searchInput.value}". Try another search term.</p>`;
+      }
+    };
 
     function cleanText(str) {
       if (!str) return '';
-      return str.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'");
+      return str.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
     }
 
     function renderSongs() {
@@ -305,13 +292,21 @@
       lucide.createIcons();
     }
 
-    function playSong(index) {
+    async function playSong(index) {
       const list = currentTab === 'online' ? searchResults : offlineSongs;
       if (index < 0 || index >= list.length) return;
       currentIndex = index;
       const song = list[currentIndex];
 
-      audio.src = song.offlineBlobUrl || song.url;
+      let streamUrl = song.offlineBlobUrl || song.url;
+
+      // If URL needs resolution via JSONP
+      if (!song.offlineBlobUrl && song.encryptedMediaUrl) {
+        streamUrl = await resolveStreamUrl(song.encryptedMediaUrl);
+        song.url = streamUrl;
+      }
+
+      audio.src = streamUrl;
       audio.play().then(() => {
         isPlaying = true;
         updateUI();
@@ -319,15 +314,40 @@
       }).catch(err => console.log('Playback error:', err));
     }
 
+    function resolveStreamUrl(encryptedUrl) {
+      return new Promise((resolve) => {
+        const oldScript = document.getElementById('decrypt-jsonp');
+        if (oldScript) oldScript.remove();
+
+        window.handleDecryptResponse = function(data) {
+          if (data && data.auth_url) {
+            resolve(data.auth_url);
+          } else {
+            resolve('');
+          }
+        };
+
+        const script = document.createElement('script');
+        script.id = 'decrypt-jsonp';
+        script.src = `https://www.jiosaavn.com/api.php?__call=song.generateAuthToken&url=${encodeURIComponent(encryptedUrl)}&bitrate=320&_format=json&_marker=0&api_version=4&callback=handleDecryptResponse`;
+        document.body.appendChild(script);
+      });
+    }
+
     async function downloadSong(songId) {
       const song = searchResults.find(s => s.id === songId);
       if (!song) return;
 
       try {
-        const response = await fetch(song.url);
+        let streamUrl = song.url;
+        if (song.encryptedMediaUrl) {
+          streamUrl = await resolveStreamUrl(song.encryptedMediaUrl);
+        }
+
+        const response = await fetch(streamUrl);
         const blob = await response.blob();
 
-        const record = { ...song, audioBlob: blob };
+        const record = { ...song, url: streamUrl, audioBlob: blob };
         const tx = db.transaction('downloads', 'readwrite');
         tx.objectStore('downloads').put(record);
         tx.oncomplete = () => loadOfflineSongs();
