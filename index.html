@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>My Personal Spotify</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- jsmediatags for parsing local audio ID3 tags & covers -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+
+  <style>
+    body {
+      background-color: #121212;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .spotify-green { color: #1DB954; }
+    .bg-spotify-green { background-color: #1DB954; }
+    .bg-spotify-card { background-color: #181818; }
+    .bg-spotify-card:hover { background-color: #282828; }
+    .bg-spotify-player { background-color: #181818; }
+    
+    /* Hide scrollbar for Chrome, Safari and Opera */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    /* Hide scrollbar for IE, Edge and Firefox */
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    input[type="range"] {
+      accent-color: #1DB954;
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col justify-between overflow-hidden">
+
+  <!-- Main Content Container -->
+  <div class="flex-1 overflow-y-auto no-scrollbar pb-32 p-4" id="main-content">
+    
+    <!-- Top Header -->
+    <div class="flex justify-between items-center mb-6 pt-2">
+      <h1 class="text-2xl font-bold tracking-tight">My Library</h1>
+      <label for="file-upload" class="bg-spotify-green hover:bg-green-600 text-black font-semibold px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer text-sm transition">
+        <i data-lucide="plus" class="w-4 h-4"></i> Add Songs
+      </label>
+      <input id="file-upload" type="file" accept="audio/*" multiple class="hidden">
+    </div>
+
+    <!-- Search Bar -->
+    <div class="relative mb-6">
+      <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+      <input type="text" id="search-input" placeholder="Search songs or artists..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500">
+    </div>
+
+    <!-- Playlist Section / Song List -->
+    <div class="space-y-2" id="song-list">
+      <!-- Songs will be injected here dynamically -->
+    </div>
+  </div>
+
+  <!-- Mini Player (Sticky Bottom) -->
+  <div id="mini-player" class="fixed bottom-0 left-0 right-0 bg-spotify-player border-t border-zinc-800 p-3 flex items-center justify-between z-40">
+    <div class="flex items-center gap-3 overflow-hidden cursor-pointer flex-1" onclick="openFullPlayer()">
+      <img id="player-cover" src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100&auto=format&fit=crop&q=60" class="w-12 h-12 rounded object-cover flex-shrink-0" alt="Cover">
+      <div class="overflow-hidden pr-2">
+        <p id="player-title" class="text-sm font-semibold truncate text-white">No track selected</p>
+        <p id="player-artist" class="text-xs text-zinc-400 truncate">Tap to play music</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button onclick="togglePlayPause()" class="w-10 h-10 rounded-full bg-spotify-green text-black flex items-center justify-center focus:outline-none">
+        <i id="play-icon" data-lucide="play" class="w-5 h-5 fill-current"></i>
+      </button>
+      <button onclick="playNext()" class="text-zinc-400 hover:text-white p-1">
+        <i data-lucide="skip-forward" class="w-5 h-5"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Full Screen Player Modal -->
+  <div id="full-player" class="fixed inset-0 bg-gradient-to-b from-zinc-900 via-zinc-950 to-black z-50 transform translate-y-full transition-transform duration-300 ease-in-out flex flex-col justify-between p-6">
+    
+    <!-- Top Header -->
+    <div class="flex justify-between items-center">
+      <button onclick="closeFullPlayer()" class="text-zinc-400 hover:text-white">
+        <i data-lucide="chevron-down" class="w-7 h-7"></i>
+      </button>
+      <span class="text-xs uppercase tracking-widest text-zinc-400 font-semibold">Playing from Your Library</span>
+      <button class="text-zinc-400 hover:text-white">
+        <i data-lucide="more-horizontal" class="w-6 h-6"></i>
+      </button>
+    </div>
+
+    <!-- Album Art -->
+    <div class="my-auto py-6 flex justify-center">
+      <img id="full-cover" src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=60" class="w-72 h-72 rounded-lg object-cover shadow-2xl" alt="Full Cover">
+    </div>
+
+    <!-- Track Info & Controls -->
+    <div>
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <h2 id="full-title" class="text-xl font-bold text-white truncate">No track selected</h2>
+          <p id="full-artist" class="text-sm text-zinc-400 truncate">Tap to play music</p>
+        </div>
+        <button id="like-btn" onclick="toggleLike()" class="text-zinc-400 hover:text-green-500">
+          <i data-lucide="heart" class="w-6 h-6"></i>
+        </button>
+      </div>
+
+      <!-- Seek Bar -->
+      <div class="mb-6">
+        <input type="range" id="seek-bar" value="0" max="100" class="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        <div class="flex justify-between text-xs text-zinc-400 mt-2">
+          <span id="current-time">0:00</span>
+          <span id="total-duration">0:00</span>
+        </div>
+      </div>
+
+      <!-- Player Controls -->
+      <div class="flex justify-between items-center mb-8 px-4">
+        <button onclick="toggleShuffle()" id="shuffle-btn" class="text-zinc-400 hover:text-white">
+          <i data-lucide="shuffle" class="w-5 h-5"></i>
+        </button>
+        <button onclick="playPrev()" class="text-white hover:text-zinc-300">
+          <i data-lucide="skip-back" class="w-7 h-7"></i>
+        </button>
+        <button onclick="togglePlayPause()" class="w-16 h-16 rounded-full bg-spotify-green text-black flex items-center justify-center shadow-lg focus:outline-none">
+          <i id="full-play-icon" data-lucide="play" class="w-8 h-8 fill-current"></i>
+        </button>
+        <button onclick="playNext()" class="text-white hover:text-zinc-300">
+          <i data-lucide="skip-forward" class="w-7 h-7"></i>
+        </button>
+        <button onclick="toggleRepeat()" id="repeat-btn" class="text-zinc-400 hover:text-white">
+          <i data-lucide="repeat" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Tag -->
+  <audio id="audio-element"></audio>
+
+  <script>
+    // Initial Sample Track
+    let songs = [
+      {
+        id: '1',
+        title: 'Acoustic Breeze',
+        artist: 'Benjamin Tissot',
+        cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60',
+        url: 'https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3',
+        liked: false
+      }
+    ];
+
+    let currentIndex = -1;
+    let isPlaying = false;
+    let isShuffle = false;
+    let isRepeat = false;
+
+    const audio = document.getElementById('audio-element');
+    const songListEl = document.getElementById('song-list');
+    const searchInput = document.getElementById('search-input');
+    const seekBar = document.getElementById('seek-bar');
+
+    // Initialize App
+    window.onload = () => {
+      lucide.createIcons();
+      renderSongs(songs);
+    };
+
+    // Render Songs
+    function renderSongs(songArray) {
+      songListEl.innerHTML = '';
+      if (songArray.length === 0) {
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-sm">No songs found. Click "+ Add Songs" to upload MP3 files!</p>`;
+        return;
+      }
+
+      songArray.forEach((song, index) => {
+        const isCurrent = currentIndex === index;
+        const card = document.createElement('div');
+        card.className = `flex items-center justify-between p-3 rounded-lg cursor-pointer bg-spotify-card transition ${isCurrent ? 'border-l-4 border-green-500' : ''}`;
+        card.onclick = () => playSong(index);
+
+        card.innerHTML = `
+          <div class="flex items-center gap-3 overflow-hidden">
+            <img src="${song.cover}" class="w-12 h-12 rounded object-cover flex-shrink-0" alt="Cover">
+            <div class="overflow-hidden">
+              <p class="text-sm font-semibold truncate ${isCurrent ? 'text-green-500' : 'text-white'}">${song.title}</p>
+              <p class="text-xs text-zinc-400 truncate">${song.artist}</p>
+            </div>
+          </div>
+          <button onclick="event.stopPropagation(); removeSong('${song.id}')" class="text-zinc-500 hover:text-red-400 p-2">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+        `;
+        songListEl.appendChild(card);
+      });
+      lucide.createIcons();
+    }
+
+    // Play Song
+    function playSong(index) {
+      if (index < 0 || index >= songs.length) return;
+      currentIndex = index;
+      const song = songs[currentIndex];
+
+      audio.src = song.url;
+      audio.play();
+      isPlaying = true;
+
+      updateUI();
+      setupMediaSession(song);
+    }
+
+    // Toggle Play / Pause
+    function togglePlayPause() {
+      if (currentIndex === -1 && songs.length > 0) {
+        playSong(0);
+        return;
+      }
+      if (audio.paused) {
+        audio.play();
+        isPlaying = true;
+      } else {
+        audio.pause();
+        isPlaying = false;
+      }
+      updateUI();
+    }
+
+    // Update UI elements
+    function updateUI() {
+      if (currentIndex === -1) return;
+      const song = songs[currentIndex];
+
+      // Mini Player
+      document.getElementById('player-cover').src = song.cover;
+      document.getElementById('player-title').innerText = song.title;
+      document.getElementById('player-artist').innerText = song.artist;
+
+      // Full Player
+      document.getElementById('full-cover').src = song.cover;
+      document.getElementById('full-title').innerText = song.title;
+      document.getElementById('full-artist').innerText = song.artist;
+
+      // Icons
+      const playIcon = isPlaying ? 'pause' : 'play';
+      document.getElementById('play-icon').setAttribute('data-lucide', playIcon);
+      document.getElementById('full-play-icon').setAttribute('data-lucide', playIcon);
+
+      renderSongs(songs);
+      lucide.createIcons();
+    }
+
+    // Next Track
+    function playNext() {
+      if (songs.length === 0) return;
+      if (isShuffle) {
+        let randomIndex = Math.floor(Math.random() * songs.length);
+        playSong(randomIndex);
+      } else {
+        let nextIndex = (currentIndex + 1) % songs.length;
+        playSong(nextIndex);
+      }
+    }
+
+    // Previous Track
+    function playPrev() {
+      if (songs.length === 0) return;
+      let prevIndex = (currentIndex - 1 + songs.length) % songs.length;
+      playSong(prevIndex);
+    }
+
+    // Audio Event Listeners
+    audio.ontimeupdate = () => {
+      if (audio.duration) {
+        const progress = (audio.currentTime / audio.duration) * 100;
+        seekBar.value = progress;
+        document.getElementById('current-time').innerText = formatTime(audio.currentTime);
+        document.getElementById('total-duration').innerText = formatTime(audio.duration);
+      }
+    };
+
+    audio.onended = () => {
+      if (isRepeat) {
+        playSong(currentIndex);
+      } else {
+        playNext();
+      }
+    };
+
+    seekBar.oninput = () => {
+      if (audio.duration) {
+        audio.currentTime = (seekBar.value / 100) * audio.duration;
+      }
+    };
+
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+
+    // Handle Local File Uploads
+    document.getElementById('file-upload').addEventListener('change', (e) => {
+      const files = Array.from(e.target.files);
+      files.forEach((file) => {
+        const url = URL.createObjectURL(file);
+        
+        // Parse ID3 Tags using jsmediatags
+        jsmediatags.read(file, {
+          onSuccess: function(tag) {
+            const tags = tag.tags;
+            let coverUrl = 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=60';
+            
+            if (tags.picture) {
+              const { data, format } = tags.picture;
+              let base64String = "";
+              for (let i = 0; i < data.length; i++) {
+                base64String += String.fromCharCode(data[i]);
+              }
+              coverUrl = `data:${format};base64,${window.btoa(base64String)}`;
+            }
+
+            songs.push({
+              id: Date.now().toString() + Math.random(),
+              title: tags.title || file.name.replace(/\.[^/.]+$/, ""),
+              artist: tags.artist || "Unknown Artist",
+              cover: coverUrl,
+              url: url,
+              liked: false
+            });
+
+            renderSongs(songs);
+            if (currentIndex === -1) playSong(songs.length - 1);
+          },
+          onError: function(error) {
+            songs.push({
+              id: Date.now().toString(),
+              title: file.name.replace(/\.[^/.]+$/, ""),
+              artist: "Local Track",
+              cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=60',
+              url: url,
+              liked: false
+            });
+            renderSongs(songs);
+            if (currentIndex === -1) playSong(songs.length - 1);
+          }
+        });
+      });
+    });
+
+    // Remove Song
+    function removeSong(id) {
+      songs = songs.filter(s => s.id !== id);
+      renderSongs(songs);
+    }
+
+    // Search Filter
+    searchInput.oninput = () => {
+      const query = searchInput.value.toLowerCase();
+      const filtered = songs.filter(s => s.title.toLowerCase().includes(query) || s.artist.toLowerCase().includes(query));
+      renderSongs(filtered);
+    };
+
+    // Full Player Modal Controls
+    function openFullPlayer() {
+      document.getElementById('full-player').classList.remove('translate-y-full');
+    }
+    function closeFullPlayer() {
+      document.getElementById('full-player').classList.add('translate-y-full');
+    }
+
+    // Media Session API for Phone Lock Screen
+    function setupMediaSession(song) {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: song.title,
+          artist: song.artist,
+          artwork: [{ src: song.cover, sizes: '512x512', type: 'image/jpeg' }]
+        });
+
+        navigator.mediaSession.setActionHandler('play', () => togglePlayPause());
+        navigator.mediaSession.setActionHandler('pause', () => togglePlayPause());
+        navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
+        navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+      }
+    }
+  </script>
+</body>
+</html>
