@@ -10,7 +10,6 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#121212">
 
-  <!-- Tailwind CSS & Icons -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
 
@@ -26,60 +25,50 @@
     .bg-spotify-green { background-color: #1DB954; }
     .bg-spotify-card { background-color: #181818; }
     .bg-spotify-card:active { background-color: #282828; }
-    
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
     input[type="range"] { accent-color: #1DB954; }
   </style>
 </head>
 <body class="h-screen flex flex-col justify-between overflow-hidden">
 
-  <!-- Offline Status Banner -->
   <div id="offline-banner" class="hidden bg-amber-600 text-black text-xs font-bold py-1 text-center">
-    Offline Mode — Playing Downloaded Songs
+    Offline Mode — Playing Saved Downloads
   </div>
 
-  <!-- Main View -->
   <div class="flex-1 overflow-y-auto no-scrollbar pb-36 p-4">
-    
     <div class="flex justify-between items-center mb-4 pt-2">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">Spotify Music</h1>
-        <p class="text-xs text-zinc-400">Search & Play Any Track</p>
+        <p class="text-xs text-zinc-400">Full Song Player</p>
       </div>
     </div>
 
-    <!-- Search Input -->
     <div class="flex gap-2 mb-4">
       <div class="relative flex-1">
         <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
-        <input type="text" id="search-input" placeholder="Search any song or artist (e.g. Sidhu Moose Wala)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchSongs()">
+        <input type="text" id="search-input" placeholder="Search any song or artist (e.g. Moves, Sidhu)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchSongs()">
       </div>
       <button onclick="searchSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
         Search
       </button>
     </div>
 
-    <!-- Navigation Tabs -->
     <div class="flex gap-2 mb-4 border-b border-zinc-800 pb-2">
       <button onclick="switchTab('online')" id="tab-online" class="text-xs font-bold px-3 py-1.5 rounded-full bg-white text-black">Online Search</button>
       <button onclick="switchTab('offline')" id="tab-offline" class="text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">Downloaded (Offline)</button>
     </div>
 
-    <!-- Loading Spinner -->
     <div id="loading-spinner" class="hidden text-center py-10">
       <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
-      <p class="text-xs text-zinc-400 mt-2">Fetching tracks...</p>
+      <p class="text-xs text-zinc-400 mt-2">Loading full songs...</p>
     </div>
 
-    <!-- Song List -->
     <div class="space-y-2" id="song-list">
-      <p class="text-center text-zinc-500 py-10 text-xs">Search any song or artist above to get started.</p>
+      <p class="text-center text-zinc-500 py-10 text-xs">Search any track or artist name above.</p>
     </div>
   </div>
 
-  <!-- Sticky Mini Player -->
   <div id="mini-player" class="fixed bottom-0 left-0 right-0 bg-[#181818] border-t border-zinc-800 p-3 flex items-center justify-between z-40 shadow-2xl">
     <div class="flex items-center gap-3 overflow-hidden cursor-pointer flex-1" onclick="openFullPlayer()">
       <img id="player-cover" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=120&auto=format&fit=crop&q=60" class="w-12 h-12 rounded-md object-cover flex-shrink-0" alt="Cover">
@@ -99,7 +88,6 @@
     </div>
   </div>
 
-  <!-- Full Screen Player Modal -->
   <div id="full-player" class="fixed inset-0 bg-gradient-to-b from-zinc-900 via-zinc-950 to-black z-50 transform translate-y-full transition-transform duration-300 ease-in-out flex flex-col justify-between p-6">
     <div class="flex justify-between items-center">
       <button onclick="closeFullPlayer()" class="text-zinc-400 p-2">
@@ -109,7 +97,6 @@
       <div class="w-7"></div>
     </div>
 
-    <!-- Album Art -->
     <div class="my-auto py-6 flex justify-center">
       <img id="full-cover" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60" class="w-72 h-72 rounded-xl object-cover shadow-2xl border border-zinc-800" alt="Cover">
     </div>
@@ -150,7 +137,7 @@
     }
 
     let db;
-    const dbReq = indexedDB.open('SpotifyDeezerDB', 1);
+    const dbReq = indexedDB.open('SpotifyAudioDB', 1);
     dbReq.onupgradeneeded = (e) => {
       db = e.target.result;
       if (!db.objectStoreNames.contains('downloads')) {
@@ -193,46 +180,30 @@
       renderSongs();
     }
 
-    // Direct Deezer JSONP Search Engine (No CORS blocks, 100% reliable)
-    function searchSongs() {
+    async function searchSongs() {
       const query = searchInput.value.trim();
       if (!query) return;
 
       document.getElementById('loading-spinner').classList.remove('hidden');
       songListEl.innerHTML = '';
 
-      const oldScript = document.getElementById('deezer-jsonp');
-      if (oldScript) oldScript.remove();
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
 
-      const script = document.createElement('script');
-      script.id = 'deezer-jsonp';
-      script.src = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&output=jsonp&callback=handleDeezerSearch`;
-      
-      script.onerror = () => {
+        if (Array.isArray(data) && data.length > 0) {
+          searchResults = data;
+          document.getElementById('loading-spinner').classList.add('hidden');
+          switchTab('online');
+        } else {
+          document.getElementById('loading-spinner').classList.add('hidden');
+          songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No songs found for "${query}".</p>`;
+        }
+      } catch (err) {
         document.getElementById('loading-spinner').classList.add('hidden');
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Search failed. Try again.</p>`;
-      };
-
-      document.body.appendChild(script);
-    }
-
-    window.handleDeezerSearch = function(data) {
-      document.getElementById('loading-spinner').classList.add('hidden');
-
-      if (data && data.data && data.data.length > 0) {
-        searchResults = data.data.map(item => ({
-          id: String(item.id),
-          title: item.title,
-          artist: item.artist.name,
-          cover: item.album.cover_medium || item.album.cover_big,
-          url: item.preview
-        }));
-
-        switchTab('online');
-      } else {
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">No songs found for "${searchInput.value}".</p>`;
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">Search error. Try again.</p>`;
       }
-    };
+    }
 
     function renderSongs() {
       songListEl.innerHTML = '';
