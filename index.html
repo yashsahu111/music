@@ -47,7 +47,7 @@
     <div class="flex gap-2 mb-4">
       <div class="relative flex-1">
         <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400"></i>
-        <input type="text" id="search-input" placeholder="Search any song or artist (e.g. Moves, Sidhu)..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchSongs()">
+        <input type="text" id="search-input" placeholder="Search any song or artist..." class="w-full bg-[#242424] text-white text-sm rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-500" onkeypress="if(event.key === 'Enter') searchSongs()">
       </div>
       <button onclick="searchSongs()" class="bg-spotify-green hover:bg-green-600 text-black font-bold px-4 py-2.5 rounded-full text-xs transition">
         Search
@@ -137,7 +137,7 @@
     }
 
     let db;
-    const dbReq = indexedDB.open('SpotifyAudioDB', 1);
+    const dbReq = indexedDB.open('SpotifyAudioDB_v2', 1);
     dbReq.onupgradeneeded = (e) => {
       db = e.target.result;
       if (!db.objectStoreNames.contains('downloads')) {
@@ -210,7 +210,7 @@
       const list = currentTab === 'online' ? searchResults : offlineSongs;
 
       if (list.length === 0) {
-        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">${currentTab === 'online' ? 'Type an artist or song name above.' : 'No downloaded songs. Tap download next to any song to play offline!'}</p>`;
+        songListEl.innerHTML = `<p class="text-center text-zinc-500 py-10 text-xs">${currentTab === 'online' ? 'Type an artist or song name above.' : 'No downloaded songs. Tap download next to any song to save offline!'}</p>`;
         return;
       }
 
@@ -272,12 +272,19 @@
         const response = await fetch(song.url);
         const blob = await response.blob();
 
-        const record = { ...song, audioBlob: blob };
+        const record = {
+          id: song.id,
+          title: song.title,
+          artist: song.artist,
+          cover: song.cover,
+          audioBlob: blob
+        };
+
         const tx = db.transaction('downloads', 'readwrite');
         tx.objectStore('downloads').put(record);
         tx.oncomplete = () => loadOfflineSongs();
       } catch (err) {
-        alert('Could not download song for offline listening.');
+        alert('Could not store audio for offline listening.');
       }
     }
 
